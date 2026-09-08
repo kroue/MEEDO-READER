@@ -32,6 +32,26 @@ object BillingMonth {
     fun current(zone: ZoneId = ZoneId.systemDefault()): String = of(System.currentTimeMillis(), zone)
 
     /**
+     * Firestore document ID for a month's bill: "AUG 2026" -> "2026-08".
+     *
+     * Sortable, so the sub-collection's own key order is chronological and the
+     * two most recent bills can be read without an index. Also stable, so a
+     * corrected reading overwrites that month's bill rather than appending a
+     * second one.
+     */
+    fun documentKey(monthStr: String): String {
+        val parts = monthStr.trim().split(" ")
+        val monthIndex = if (parts.size == 2) MONTHS.indexOf(parts[0].uppercase()) else -1
+        val year = parts.getOrNull(1)?.toIntOrNull()
+        if (monthIndex < 0 || year == null) {
+            // Unparseable months would otherwise all collide on one document ID
+            // and silently overwrite each other.
+            return "invalid-" + monthStr.replace(Regex("[^A-Za-z0-9]"), "-")
+        }
+        return "%04d-%02d".format(year, monthIndex + 1)
+    }
+
+    /**
      * Sortable key for a month string, so history can be ordered by month
      * rather than by position in the array. Firestore preserves array order,
      * but that order is only chronological by accident: a corrected reading is

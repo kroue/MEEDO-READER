@@ -122,20 +122,42 @@ class FirebaseRepository @Inject constructor() {
                     val meterNo = doc.getString("meterNumber") ?: "N/A"
                     val classification = doc.getString("classification") ?: "RESIDENTIAL"
 
+                    // Bills live in a `bills` sub-collection now. Reading them per
+                    // consumer would mean one extra query for every account on the
+                    // route — a few hundred round trips over a field connection just
+                    // to fetch two documents each. So the parent document carries
+                    // `billingSummary`, a fixed-size view holding exactly the two
+                    // bills this app needs: the latest, and the one before it.
+                    val summary = doc.get("billingSummary") as? Map<String, Any>
+                    val summaryLatest = summary?.get("latestBill") as? Map<String, Any>
+                    val summaryPrevious = summary?.get("previousBill") as? Map<String, Any>
+
                     @Suppress("UNCHECKED_CAST")
                     val billingHistory = doc.get("billingHistory") as? List<Map<String, Any>>
-                    // Ordered by month, not by position. Firestore preserves array
-                    // order, but that order is chronological only by accident: a
+                    // Fallback for accounts the storage migration hasn't reached.
+                    // Ordered by month, not by position: Firestore preserves array
+                    // order, but that order is chronological only by accident — a
                     // corrected reading is appended at the end, and the admin's XLSX
-                    // importer writes rows in whatever order the sheet had. Trusting
-                    // position put the wrong month's reading in "previous reading",
-                    // and every consumption from then on was wrong.
+                    // importer writes rows in whatever order the sheet had.
                     val orderedHistory = billingHistory
                         ?.sortedBy { BillingMonth.sortKey(it["month"] as? String) }
                         .orEmpty()
 
-                    val currentMonthRecord = orderedHistory.lastOrNull { (it["month"] as? String) == monthStr }
-                    val lastPriorRecord = orderedHistory.lastOrNull { (it["month"] as? String) != monthStr }
+                    val currentMonthRecord = if (summary != null) {
+                        summaryLatest?.takeIf { (it["month"] as? String) == monthStr }
+                    } else {
+                        orderedHistory.lastOrNull { (it["month"] as? String) == monthStr }
+                    }
+
+                    val lastPriorRecord = if (summary != null) {
+                        // If the latest bill IS this cycle's, the previous reading is
+                        // the one before it; otherwise the latest bill is itself the
+                        // previous reading.
+                        if ((summaryLatest?.get("month") as? String) == monthStr) summaryPrevious
+                        else summaryLatest
+                    } else {
+                        orderedHistory.lastOrNull { (it["month"] as? String) != monthStr }
+                    }
 
                     val prevReading = (lastPriorRecord?.get("reading") as? Number)?.toDouble() ?: 0.0
                     val prevReadingMonth = lastPriorRecord?.get("month") as? String ?: ""
@@ -167,8 +189,13 @@ class FirebaseRepository @Inject constructor() {
                     // The ₱10 extension fee is charged once per delinquency, not once per
                     // bill — derived (not separately tracked) by checking whether any bill
                     // issued since this debt began already carried the fee.
+                    val feeCandidates = if (summary != null) {
+                        listOfNotNull(summaryLatest, summaryPrevious)
+                    } else {
+                        orderedHistory
+                    }
                     val extensionFeeAlreadyCharged = delinquentSinceMillis?.let { streakStart ->
-                        orderedHistory.any { record ->
+                        feeCandidates.any { record ->
                             val recordMillis = parseIsoMillis(record["billingDate"] as? String)
                             val feeCharged = record["extensionFeeCharged"] as? Boolean ?: false
                             recordMillis != null && recordMillis >= streakStart && feeCharged
@@ -274,12 +301,25 @@ class FirebaseRepository @Inject constructor() {
 
             val docRef = db.collection("concessionaires").document(consumer.firebaseId)
             val counterRef = db.collection("settings").document("orCounter")
+            // Bills are documents now, keyed by a sortable month so Firestore's
+            // own key order is chronological and a correction lands on the same
+            // document instead of appending a duplicate.
+            val billRef = docRef.collection("bills").document(BillingMonth.documentKey(monthStr))
 
             val outcome = db.runTransaction { transaction ->
                 val snapshot = transaction.get(docRef)
+                val billSnapshot = transaction.get(billRef)
+
                 @Suppress("UNCHECKED_CAST")
-                val existingHistory = snapshot.get("billingHistory") as? List<Map<String, Any>> ?: emptyList()
-                val existingRecordForMonth = existingHistory.firstOrNull { it["month"] == monthStr }
+                val legacyHistory = snapshot.get("billingHistory") as? List<Map<String, Any>> ?: emptyList()
+                @Suppress("UNCHECKED_CAST")
+                val summary = snapshot.get("billingSummary") as? Map<String, Any>
+
+                // Prefer the bill document; fall back to the array for an account
+                // the storage migration hasn't reached.
+                val existingRecordForMonth: Map<String, Any>? =
+                    if (billSnapshot.exists()) billSnapshot.data
+                    else legacyHistory.firstOrNull { it["month"] == monthStr }
 
                 // ── Recalculate against the LIVE balance ─────────────────────
                 val storedBalance = snapshot.getDouble("billingBalance") ?: 0.0
@@ -298,8 +338,14 @@ class FirebaseRepository @Inject constructor() {
                 val creditAvailable = storedCredit + creditAppliedBy(existingRecordForMonth)
 
                 val delinquentSince = parseIsoMillis(snapshot.getString("delinquentSince"))
+                @Suppress("UNCHECKED_CAST")
+                val summaryBills = listOfNotNull(
+                    summary?.get("latestBill") as? Map<String, Any>,
+                    summary?.get("previousBill") as? Map<String, Any>
+                )
+                val feeCandidates = summaryBills.ifEmpty { legacyHistory }
                 val extensionFeeAlreadyCharged = delinquentSince?.let { streakStart ->
-                    existingHistory.any { record ->
+                    feeCandidates.any { record ->
                         if (record["month"] == monthStr) return@any false
                         val recordMillis = parseIsoMillis(record["billingDate"] as? String)
                         val feeCharged = record["extensionFeeCharged"] as? Boolean ?: false
@@ -341,6 +387,7 @@ class FirebaseRepository @Inject constructor() {
                     // Preserve whatever the office has already collected against
                     // this cycle; a corrected reading must not wipe a payment.
                     "amountPaid" to ((existingRecordForMonth?.get("amountPaid") as? Number)?.toDouble() ?: 0.0),
+                    "source" to "field",
                     "billingDate" to Instant.ofEpochMilli(reading.readingDate).toString(),
                     "extensionFeeCharged" to (billing.extensionFee > 0),
                     // Full itemized breakdown — not just the aggregate — so any
@@ -358,8 +405,6 @@ class FirebaseRepository @Inject constructor() {
                     "projectedOverdueTotal" to billing.projectedOverdueTotal
                 )
 
-                val updatedHistory = existingHistory.filter { it["month"] != monthStr } + record
-
                 val newBillingBalance = billing.totalAmountDue
                 val newCreditBalance = billing.creditRemaining
 
@@ -373,8 +418,54 @@ class FirebaseRepository @Inject constructor() {
                     else -> null // already delinquent; leave the original date alone
                 }
 
+                // The bill itself, plus the owner fields the admin console's
+                // collection-group queries filter and render on — Firestore has no
+                // joins, so that duplication is the cost of querying across every
+                // account's bills at once.
+                transaction.set(
+                    billRef,
+                    record + mapOf(
+                        "monthKey" to BillingMonth.documentKey(monthStr),
+                        "concessionaireId" to consumer.firebaseId,
+                        "concessionaireName" to consumer.name,
+                        "barangay" to consumer.routeId,
+                        "meterNumber" to consumer.meterNo,
+                        "classification" to consumer.classification
+                    )
+                )
+
+                // `billingSummary` is the fixed-size view the download path reads
+                // instead of opening the sub-collection. Rebuilt here from what we
+                // already hold: this bill, plus whichever of the previous two it
+                // displaces.
+                val priorLatest = summary?.get("latestBill") as? Map<String, Any>
+                val priorPrevious = summary?.get("previousBill") as? Map<String, Any>
+                val neighbours = listOfNotNull(priorLatest, priorPrevious)
+                    .filter { (it["month"] as? String) != monthStr }
+                val orderedSummaryBills = (listOf(record) + neighbours)
+                    .sortedByDescending { BillingMonth.sortKey(it["month"] as? String) }
+
+                val replacedExisting = existingRecordForMonth != null
+                val priorMonths = (summary?.get("monthsBilled") as? Number)?.toInt()
+                    ?: legacyHistory.size
+                val priorWaterCharged = (summary?.get("totalWaterCharged") as? Number)?.toDouble() ?: 0.0
+                val displacedWaterCharge = existingRecordForMonth?.let {
+                    ((it["minimumCharge"] as? Number)?.toDouble() ?: 0.0) +
+                        ((it["commodityCharge"] as? Number)?.toDouble() ?: 0.0)
+                } ?: 0.0
+
+                val newSummary = mapOf(
+                    "monthsBilled" to if (replacedExisting) priorMonths else priorMonths + 1,
+                    "totalWaterCharged" to round(
+                        (priorWaterCharged - displacedWaterCharge + billing.totalWaterCharge) * 100.0
+                    ) / 100.0,
+                    "totalCollected" to ((summary?.get("totalCollected") as? Number)?.toDouble() ?: 0.0),
+                    "latestBill" to (orderedSummaryBills.getOrNull(0) as Any?),
+                    "previousBill" to (orderedSummaryBills.getOrNull(1) as Any?)
+                )
+
                 val updates = mutableMapOf<String, Any>(
-                    "billingHistory" to updatedHistory,
+                    "billingSummary" to newSummary,
                     "billingBalance" to newBillingBalance,
                     "creditBalance" to newCreditBalance,
                     "totalBalance" to round((newBillingBalance + waterMeterBalance) * 100.0) / 100.0,

@@ -36,6 +36,37 @@ class BillingMonthTest {
     }
 
     @Test
+    fun `document key is zero-padded and sorts chronologically as a string`() {
+        // The bill's Firestore document ID. Sortable so the sub-collection's own
+        // key order is chronological, and stable so a corrected reading
+        // overwrites that month rather than appending a second bill.
+        assertEquals("2026-08", BillingMonth.documentKey("AUG 2026"))
+        assertEquals("2026-01", BillingMonth.documentKey("JAN 2026"))
+        assertEquals("2025-12", BillingMonth.documentKey("DEC 2025"))
+        assertTrue(BillingMonth.documentKey("DEC 2025") < BillingMonth.documentKey("JAN 2026"))
+        assertTrue(BillingMonth.documentKey("SEP 2026") < BillingMonth.documentKey("OCT 2026"))
+    }
+
+    @Test
+    fun `document key is derived from the same month string the admin writes`() {
+        assertEquals(
+            BillingMonth.documentKey(BillingMonth.of(millisFor(2026, 9, 15), manila)),
+            "2026-09"
+        )
+    }
+
+    @Test
+    fun `unparseable months get a distinct document key rather than colliding`() {
+        // Mapping every malformed month onto one ID would have them silently
+        // overwrite each other.
+        val a = BillingMonth.documentKey("not a month")
+        val b = BillingMonth.documentKey("also bad")
+        assertTrue(a.startsWith("invalid-"))
+        assertTrue(b.startsWith("invalid-"))
+        assertTrue(a != b)
+    }
+
+    @Test
     fun `sort key orders months chronologically across year boundaries`() {
         val dec2025 = BillingMonth.sortKey("DEC 2025")
         val jan2026 = BillingMonth.sortKey("JAN 2026")
