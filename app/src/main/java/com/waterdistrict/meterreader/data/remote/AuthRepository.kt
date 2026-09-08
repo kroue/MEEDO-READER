@@ -12,7 +12,10 @@ import javax.inject.Singleton
 
 /** Thrown when a sign-in succeeds but the account isn't a field-reader account. */
 class NotAuthorizedException :
-    Exception("This account isn't set up for the mobile app. Ask your admin to check your account's role.")
+    Exception(
+        "This account can't sign in — it either isn't set up for the mobile app or has been " +
+            "disabled. Ask your admin to check it."
+    )
 
 /** A field reader's profile, set up by an admin alongside the account itself. */
 data class ReaderProfile(
@@ -67,7 +70,12 @@ class AuthRepository @Inject constructor() {
 
         val roleDoc = firestore.collection("users").document(uid).get().await()
         val role = roleDoc.getString("role")
-        if (role != "field_reader") {
+        // A disabled account is refused here as well as by the Firestore rules.
+        // An admin revoking a lost phone sets this flag; the rules stop the
+        // device reaching any data, and this stops it getting past the login
+        // screen at all rather than signing in to a broken app.
+        val disabled = roleDoc.getBoolean("disabled") ?: false
+        if (role != "field_reader" || disabled) {
             auth.signOut()
             throw NotAuthorizedException()
         }
