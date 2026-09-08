@@ -1,7 +1,10 @@
 # Build output
 *.iml
 .gradle/
-/local.properties
+# Machine-specific SDK path. The file says in its own header that it must not
+# be committed — it pins an absolute path that is wrong on every other machine
+# (and leaks the local username). Android Studio regenerates it on open.
+local.properties
 /build
 /app/build
 /captures
