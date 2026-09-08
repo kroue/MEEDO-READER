@@ -64,9 +64,13 @@ class WaterBillingCalculatorTest {
         assertEquals(100.0, WaterBillingCalculator.minimumChargeFor("GOVERNMENT"), 0.001)
         assertEquals(125.0, WaterBillingCalculator.minimumChargeFor("COMMERCIAL A"), 0.001)
         assertEquals(150.0, WaterBillingCalculator.minimumChargeFor("COMMERCIAL B"), 0.001)
-        // Unrecognised values fall back to the residential rate rather than failing.
-        assertEquals(100.0, WaterBillingCalculator.minimumChargeFor("  commercial a  "), 0.001)
-        assertEquals(125.0, WaterBillingCalculator.minimumChargeFor(" Commercial A "), 0.001)
+        // Whitespace and casing are normalised before matching.
+        assertEquals(125.0, WaterBillingCalculator.minimumChargeFor("  commercial a  "), 0.001)
+        assertEquals(150.0, WaterBillingCalculator.minimumChargeFor(" Commercial B "), 0.001)
+        // Anything unrecognised falls back to the residential rate rather than
+        // failing — imported data has carried odd classification strings before.
+        assertEquals(100.0, WaterBillingCalculator.minimumChargeFor("INDUSTRIAL"), 0.001)
+        assertEquals(100.0, WaterBillingCalculator.minimumChargeFor(""), 0.001)
     }
 
     // ── Grace period, surcharge, extension fee ───────────────────────────────

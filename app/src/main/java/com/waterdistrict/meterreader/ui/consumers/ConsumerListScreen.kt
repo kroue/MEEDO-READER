@@ -37,9 +37,24 @@ fun ConsumerListScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        if (uiState.barangay.isNotBlank()) uiState.barangay else "Assigned Concessionaires"
-                    )
+                    Column {
+                        Text(
+                            if (uiState.barangay.isNotBlank()) uiState.barangay else "Assigned Concessionaires"
+                        )
+                        // Progress for THIS cycle. Worth showing now that it
+                        // means something: "already read" used to span all
+                        // time, so from the second billing month onward every
+                        // consumer opened already ticked off and the reader had
+                        // no way to see what was left to do.
+                        if (uiState.items.isNotEmpty()) {
+                            Text(
+                                "${uiState.readCount} of ${uiState.items.size} read" +
+                                    if (uiState.billingMonth.isNotBlank()) " • ${uiState.billingMonth}" else "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

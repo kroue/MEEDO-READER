@@ -45,12 +45,17 @@ interface ConsumerDao {
     /**
      * Drops consumers left over from earlier billing cycles.
      *
-     * Local rows were never cleared, so a route that was reassigned to another
-     * reader — or an account that moved to DISCONNECTED — lingered on the
-     * device indefinitely, still listed and still showing whatever balance it
-     * had months ago. Readings are deliberately NOT cascaded away here: the
-     * foreign key would take them with it, and an unsynced reading must
-     * survive until it reaches Firestore.
+     * Local rows were never cleared, so a route reassigned to another reader —
+     * or an account that moved to DISCONNECTED — lingered on the device
+     * indefinitely, still listed and still showing whatever balance it had
+     * months ago.
+     *
+     * Any consumer still holding an unsynced reading is kept, whatever cycle
+     * it belongs to: the foreign key cascades readings away with their
+     * consumer, and a reading that has not reached Firestore exists nowhere
+     * else. Readings that HAVE synced do go with the pruned consumer — they
+     * are safely on the server, with the full itemised breakdown, and come
+     * back via hydrateReconciledReadings if that account is ever reassigned.
      */
     @Query(
         """
