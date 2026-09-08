@@ -79,16 +79,75 @@ abstract class MeterReaderDatabase : RoomDatabase() {
         val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // ── consumers ────────────────────────────────────────────────
-                // `overdue_billing_date_millis` held the oldest unpaid bill's
-                // date; `delinquent_since_millis` means the same thing closely
-                // enough for existing rows, and the next download overwrites it
-                // with the authoritative value from Firestore anyway.
-                db.execSQL("ALTER TABLE consumers ADD COLUMN delinquent_since_millis INTEGER")
+                //
+                // Rebuilt rather than ALTERed, because this version DROPS
+                // `overdue_billing_date_millis` (replaced by
+                // `delinquent_since_millis`). SQLite only gained
+                // ALTER TABLE ... DROP COLUMN in 3.35, and minSdk here is 26 —
+                // on older devices that statement doesn't exist. Leaving the
+                // column in place isn't an option either: Room compares the
+                // live table against the entity on every open and aborts with
+                // "Migration didn't properly handle consumers" if the database
+                // carries a column the entity doesn't declare.
+                //
+                // The DDL below is copied verbatim from the generated schema
+                // (app/schemas/…/8.json) so the rebuilt table matches what Room
+                // expects exactly.
                 db.execSQL(
-                    "UPDATE consumers SET delinquent_since_millis = overdue_billing_date_millis"
+                    """
+                    CREATE TABLE consumers_new (
+                      `account_no` TEXT NOT NULL,
+                      `name` TEXT NOT NULL,
+                      `address` TEXT NOT NULL,
+                      `meter_no` TEXT NOT NULL,
+                      `prev_reading` REAL NOT NULL,
+                      `route_id` TEXT NOT NULL,
+                      `firebase_id` TEXT NOT NULL,
+                      `prev_reading_month` TEXT NOT NULL,
+                      `classification` TEXT NOT NULL,
+                      `overdue_balance` REAL NOT NULL,
+                      `delinquent_since_millis` INTEGER,
+                      `credit_balance` REAL NOT NULL,
+                      `extension_fee_already_charged` INTEGER NOT NULL,
+                      `already_billed_this_month` INTEGER NOT NULL,
+                      `billing_month` TEXT NOT NULL,
+                      `billed_reading_this_month` REAL NOT NULL,
+                      `billed_amount_this_month` REAL NOT NULL,
+                      `sync_status` TEXT NOT NULL,
+                      `downloaded_at` INTEGER NOT NULL,
+                      PRIMARY KEY(`account_no`)
+                    )
+                    """.trimIndent()
                 )
-                db.execSQL("ALTER TABLE consumers ADD COLUMN credit_balance REAL NOT NULL DEFAULT 0.0")
-                db.execSQL("ALTER TABLE consumers ADD COLUMN billing_month TEXT NOT NULL DEFAULT ''")
+
+                // `overdue_billing_date_millis` held the oldest unpaid bill's
+                // date, which is close enough to a delinquency start for
+                // existing rows; the next download replaces it with the
+                // authoritative value from Firestore. `billing_month` is filled
+                // in below, once readings have their own cycle backfilled.
+                db.execSQL(
+                    """
+                    INSERT INTO consumers_new (
+                      account_no, name, address, meter_no, prev_reading, route_id,
+                      firebase_id, prev_reading_month, classification, overdue_balance,
+                      delinquent_since_millis, credit_balance, extension_fee_already_charged,
+                      already_billed_this_month, billing_month, billed_reading_this_month,
+                      billed_amount_this_month, sync_status, downloaded_at
+                    )
+                    SELECT
+                      account_no, name, address, meter_no, prev_reading, route_id,
+                      firebase_id, prev_reading_month, classification, overdue_balance,
+                      overdue_billing_date_millis, 0.0, extension_fee_already_charged,
+                      already_billed_this_month, '', billed_reading_this_month,
+                      billed_amount_this_month, sync_status, downloaded_at
+                    FROM consumers
+                    """.trimIndent()
+                )
+
+                // Foreign keys are off during a Room migration, so dropping the
+                // parent here does not cascade the child readings away.
+                db.execSQL("DROP TABLE consumers")
+                db.execSQL("ALTER TABLE consumers_new RENAME TO consumers")
 
                 // ── readings ─────────────────────────────────────────────────
                 db.execSQL("ALTER TABLE readings ADD COLUMN credit_applied REAL NOT NULL DEFAULT 0.0")
