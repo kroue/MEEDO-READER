@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android already blocks cleartext (HTTP) traffic by default for apps
+  targeting API 28+ (this app targets 35), so this isn't closing an open
+  hole — it makes that policy explicit and self-documenting instead of
+  relying on an implicit platform default that could change, and blocks
+  cleartext for every domain with no exceptions (no debug-overrides section).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

@@ -1,0 +1,39 @@
+# Build output
+*.iml
+.gradle/
+/local.properties
+/build
+/app/build
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Kotlin / KSP caches
+.kotlin/
+
+# IDE — the project's own run configurations and code style are worth keeping,
+# but per-developer window state and caches are not.
+.idea/workspace.xml
+.idea/caches/
+.idea/deploymentTargetSelector.xml
+.idea/deviceManager.xml
+.idea/AndroidProjectSystem.xml
+/app/.idea/
+
+# Crash / profiling artefacts left behind by the toolchain
+*.hprof
+
+# Signing material — NEVER commit these. See signingConfigs in app/build.gradle.kts.
+keystore.properties
+*.jks
+*.keystore
+
+# Firebase project config. Not secret (it identifies the project rather than
+# authenticating anyone) but it is environment-specific: each deployment points
+# at its own Firebase project, and committing one guarantees someone ships a
+# build wired to the wrong database. Distribute it out of band.
+google-services.json
