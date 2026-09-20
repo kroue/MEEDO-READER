@@ -17,7 +17,8 @@ import androidx.navigation.navArgument
 import com.waterdistrict.meterreader.ui.auth.AuthViewModel
 import com.waterdistrict.meterreader.ui.auth.LoginScreen
 import com.waterdistrict.meterreader.ui.bill.DigitalBillScreen
-import com.waterdistrict.meterreader.ui.consumers.ConsumerListScreen
+import com.waterdistrict.meterreader.ui.consumers.MeterEntryScreen
+import com.waterdistrict.meterreader.ui.consumers.MeterEntryViewModel
 import com.waterdistrict.meterreader.ui.reading.ReadingEntryScreen
 import com.waterdistrict.meterreader.ui.sync.SyncScreen
 import com.waterdistrict.meterreader.ui.theme.MeterReaderTheme
@@ -90,14 +91,15 @@ private fun MeterReaderNavHost(userEmail: String, onLogout: () -> Unit) {
             )
         ) { backStackEntry ->
             val billingMonth = backStackEntry.arguments?.getString("billingMonth").orEmpty()
-            ConsumerListScreen(
+            // The reading "home": readers open a household by typing its meter
+            // number. There is no browsable or searchable list of accounts.
+            MeterEntryScreen(
                 onBack = { navController.popBackStack() },
-                onConsumerSelected = { accountNo ->
+                onOpenConsumer = { accountNo ->
                     navController.navigate(
                         "reading/${Uri.encode(accountNo)}/${Uri.encode(billingMonth)}"
                     )
-                },
-                onViewBill = { readingId -> navController.navigate("bill/$readingId") }
+                }
             )
         }
         composable(
@@ -110,7 +112,18 @@ private fun MeterReaderNavHost(userEmail: String, onLogout: () -> Unit) {
             ReadingEntryScreen(
                 accountNo = backStackEntry.arguments?.getString("accountNo").orEmpty(),
                 onBack = { navController.popBackStack() },
-                onViewBill = { readingId -> navController.navigate("bill/$readingId") }
+                onViewBill = { readingId -> navController.navigate("bill/$readingId") },
+                onReadingComplete = { savedAccountNo ->
+                    // Only pop if this reading screen is still on top — a late
+                    // completion (say, a retried print finishing after the reader
+                    // opened the bill) must not pop meter entry itself.
+                    if (navController.currentDestination?.route?.startsWith("reading/") == true) {
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set(MeterEntryViewModel.KEY_LAST_SAVED, savedAccountNo)
+                        navController.popBackStack()
+                    }
+                }
             )
         }
         composable(

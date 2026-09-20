@@ -128,7 +128,9 @@ class SyncViewModel @Inject constructor(
 
             result.onSuccess { downloaded ->
                 try {
-                    consumerDao.insertAll(downloaded.map { it.consumer })
+                    // Upsert, never REPLACE — see ConsumerDao.upsertAll for the
+                    // unsynced readings REPLACE used to cascade-delete.
+                    consumerDao.upsertAll(downloaded.map { it.consumer })
                     hydrateReconciledReadings(downloaded, monthStr)
                     // Drop consumers left over from earlier cycles so the route
                     // list reflects this month's assignment rather than

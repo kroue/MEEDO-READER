@@ -2,7 +2,9 @@ package com.waterdistrict.meterreader.data.remote
 
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -82,6 +84,7 @@ class AuthRepository @Inject constructor() {
     }
 
     fun logout() {
+        cachedProfile = null
         auth.signOut()
     }
 
@@ -93,11 +96,34 @@ class AuthRepository @Inject constructor() {
      */
     suspend fun getCurrentReaderProfile(): ReaderProfile? {
         val uid = currentUserId ?: return null
-        val doc = firestore.collection("users").document(uid).get().await()
-        return ReaderProfile(
-            firstName = doc.getString("firstName") ?: "",
-            lastName = doc.getString("lastName") ?: "",
-            phoneNumber = doc.getString("phoneNumber") ?: ""
-        )
+        val ref = firestore.collection("users").document(uid)
+        return try {
+            ref.get().await().toReaderProfile().also { cachedProfile = it }
+        } catch (e: Exception) {
+            // Offline with nothing fresh to fetch, get() throws. Fall back to
+            // Firestore's local cache, then to the last profile this session saw,
+            // rather than failing whatever needed the name.
+            try {
+                ref.get(Source.CACHE).await().toReaderProfile().also { cachedProfile = it }
+            } catch (_: Exception) {
+                cachedProfile
+            }
+        }
     }
+
+    /**
+     * The last profile successfully read this session, without touching the
+     * network — for callers that must not wait on a lookup, like saving a
+     * reading in a place with no signal.
+     */
+    val lastKnownProfile: ReaderProfile? get() = cachedProfile
+
+    @Volatile
+    private var cachedProfile: ReaderProfile? = null
+
+    private fun DocumentSnapshot.toReaderProfile() = ReaderProfile(
+        firstName = getString("firstName") ?: "",
+        lastName = getString("lastName") ?: "",
+        phoneNumber = getString("phoneNumber") ?: ""
+    )
 }

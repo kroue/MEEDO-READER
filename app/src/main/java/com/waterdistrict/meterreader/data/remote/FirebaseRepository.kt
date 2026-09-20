@@ -114,6 +114,13 @@ class FirebaseRepository @Inject constructor() {
             val consumers = querySnapshot.documents.mapNotNull { doc ->
                 try {
                     val id = doc.id
+
+                    // An account an admin hasn't approved (or refused) isn't a
+                    // customer and must never be read or billed. The console won't
+                    // put one on a route, but this is the last check before a bill
+                    // could be issued against it.
+                    val approval = doc.getString("approvalStatus")
+                    if (approval != null && approval != "APPROVED") return@mapNotNull null
                     val accountNo = doc.getString("meterNumber") ?: id // Fallback to id if no meter number
                     val firstName = doc.getString("firstName") ?: ""
                     val lastName = doc.getString("lastName") ?: ""

@@ -19,16 +19,21 @@ interface ConsumerDao {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Bulk-insert consumers downloaded from the server.
-     * REPLACE strategy handles re-downloads: if the server sends an updated
-     * record for an existing accountNo, the local row is overwritten.
+     * Saves consumers downloaded from the server — inserting new ones and
+     * updating existing ones IN PLACE.
+     *
+     * This must be an upsert, not `@Insert(onConflict = REPLACE)`. SQLite's
+     * REPLACE resolves a primary-key conflict by DELETING the existing row and
+     * inserting a fresh one, and `readings.account_no` references consumers
+     * with ON DELETE CASCADE — so every route re-download silently deleted
+     * every reading on that route that hadn't synced yet. Online that stayed
+     * hidden, because readings upload within seconds of being saved. Offline,
+     * where they wait for a connection, the next download (served from
+     * Firestore's local cache) wiped them: the reading vanished, the household
+     * showed as unread again, and nothing ever uploaded.
      */
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(consumers: List<ConsumerEntity>)
-
-    /** Single insert, e.g. for manual additions. */
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(consumer: ConsumerEntity)
+    @Upsert
+    suspend fun upsertAll(consumers: List<ConsumerEntity>)
 
     /** Full object update; Room matches on primary key. */
     @Update
@@ -72,19 +77,44 @@ interface ConsumerDao {
     // Reads — Flow-based (auto-updates UI on table change)
     // ─────────────────────────────────────────────────────────────────────────
 
-    /** Observe all consumers, ordered alphabetically by name. */
-    @Query("SELECT * FROM consumers ORDER BY name ASC")
-    fun getAllConsumers(): Flow<List<ConsumerEntity>>
-
-    /** Observe consumers belonging to a specific route in a specific billing cycle. */
+    /**
+     * The consumer on this route and cycle whose meter number is exactly
+     * [meterNo] — the only way a reader opens an account.
+     *
+     * Deliberately an exact match (case and surrounding whitespace aside), with
+     * no browsing and no partial search: a reader should be standing at the
+     * meter reading its number, not picking a household from a list of names.
+     */
     @Query(
         """
         SELECT * FROM consumers
-        WHERE  route_id = :routeId AND billing_month = :billingMonth
-        ORDER  BY name ASC
+        WHERE  route_id = :routeId
+          AND  billing_month = :billingMonth
+          AND  (UPPER(TRIM(meter_no)) = UPPER(TRIM(:meterNo))
+                OR UPPER(TRIM(account_no)) = UPPER(TRIM(:meterNo)))
+        LIMIT  1
         """
     )
-    fun getConsumersByRoute(routeId: String, billingMonth: String): Flow<List<ConsumerEntity>>
+    suspend fun findOnRouteByMeter(routeId: String, billingMonth: String, meterNo: String): ConsumerEntity?
+
+    /** How many accounts are on this route this cycle. */
+    @Query("SELECT COUNT(*) FROM consumers WHERE route_id = :routeId AND billing_month = :billingMonth")
+    fun countOnRoute(routeId: String, billingMonth: String): Flow<Int>
+
+    /**
+     * How many of them are done this cycle: read on this device, or already
+     * billed on the server by another device.
+     */
+    @Query(
+        """
+        SELECT COUNT(*) FROM consumers
+        WHERE  route_id = :routeId
+          AND  billing_month = :billingMonth
+          AND  (already_billed_this_month = 1
+                OR account_no IN (SELECT account_no FROM readings WHERE billing_month = :billingMonth))
+        """
+    )
+    fun countReadOnRoute(routeId: String, billingMonth: String): Flow<Int>
 
     /** Observe a single consumer record (useful for detail screens). */
     @Query("SELECT * FROM consumers WHERE account_no = :accountNo LIMIT 1")
@@ -93,18 +123,6 @@ interface ConsumerDao {
     /** One-shot fetch (not a Flow) — useful for WorkManager background tasks. */
     @Query("SELECT * FROM consumers WHERE account_no = :accountNo LIMIT 1")
     suspend fun getConsumerByAccountNoOnce(accountNo: String): ConsumerEntity?
-
-    /** Full-text search on name or address (for the search bar). */
-    @Query(
-        """
-        SELECT * FROM consumers
-        WHERE name     LIKE '%' || :query || '%'
-           OR address  LIKE '%' || :query || '%'
-           OR account_no LIKE '%' || :query || '%'
-        ORDER BY name ASC
-        """
-    )
-    fun searchConsumers(query: String): Flow<List<ConsumerEntity>>
 
     /** Count of consumers per route — handy for route-download progress UI. */
     @Query("SELECT COUNT(*) FROM consumers WHERE route_id = :routeId")

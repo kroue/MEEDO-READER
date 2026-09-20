@@ -85,9 +85,16 @@ fun ReadingEntryScreen(
     accountNo: String,
     onBack: () -> Unit = {},
     onViewBill: (Long) -> Unit = {},
+    onReadingComplete: (String) -> Unit = {},
     viewModel: ReadingViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // Once a household is done — saved, and printed if printing was asked for —
+    // go straight back to meter entry for the next one.
+    LaunchedEffect(viewModel) {
+        viewModel.readingComplete.collect { savedAccountNo -> onReadingComplete(savedAccountNo) }
+    }
     val triggerSaveAndPrint = rememberBluetoothConnectAction(
         onReady = { viewModel.onEvent(ReadingUiEvent.SaveAndPrint) }
     )
@@ -183,7 +190,7 @@ fun ReadingEntryScreen(
 
                 uiState.savedReadingId?.let { readingId ->
                     Spacer(Modifier.height(8.dp))
-                    SuccessBanner(message = "Reading saved! Queued for sync.")
+                    SuccessBanner(message = "Reading saved — it uploads as soon as there's a connection.")
                     Spacer(Modifier.height(12.dp))
                     Button(
                         onClick = { onViewBill(readingId) },
@@ -197,6 +204,22 @@ fun ReadingEntryScreen(
                         Icon(Icons.Outlined.Receipt, contentDescription = null, tint = SurfaceDark)
                         Spacer(Modifier.width(8.dp))
                         Text("View Digital Bill", color = SurfaceDark, fontWeight = FontWeight.Bold)
+                    }
+
+                    // Only reachable when printing failed after the save — a
+                    // clean save returns to meter entry on its own. The bill
+                    // can still be reprinted later from the account.
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.onEvent(ReadingUiEvent.NextHousehold) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .padding(horizontal = 16.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, AccentTeal.copy(alpha = 0.6f))
+                    ) {
+                        Text("Next household", color = AccentTeal, fontWeight = FontWeight.Bold)
                     }
                 }
             }

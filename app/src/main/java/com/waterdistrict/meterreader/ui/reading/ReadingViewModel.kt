@@ -19,8 +19,10 @@ import com.waterdistrict.meterreader.hardware.bluetooth.PrinterState
 import com.waterdistrict.meterreader.hardware.bluetooth.WaterBillReceiptBuilder
 import com.waterdistrict.meterreader.worker.SyncReadingsWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,6 +99,8 @@ sealed class ReadingUiEvent {
     object SaveOnly : ReadingUiEvent()
     object RetryPrint : ReadingUiEvent()
     object DisconnectPrinter : ReadingUiEvent()
+    /** Move on without a receipt — used when printing failed after a save. */
+    object NextHousehold : ReadingUiEvent()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -144,6 +148,11 @@ class ReadingViewModel @Inject constructor(
     private val _savedReadingId      = MutableStateFlow<Long?>(null)
     private val _isSaving            = MutableStateFlow(false)
     private val _saveError           = MutableStateFlow<String?>(null)
+
+    // One-shot: this household is finished. The screen answers it by going
+    // straight back to meter entry, ready for the next household.
+    private val _readingComplete = Channel<String>(Channel.BUFFERED)
+    val readingComplete: Flow<String> = _readingComplete.receiveAsFlow()
 
     /** Exposed to the UI — single source of truth. */
     val uiState: StateFlow<ReadingUiState> = combine(
@@ -225,6 +234,7 @@ class ReadingViewModel @Inject constructor(
             ReadingUiEvent.SaveOnly          -> saveReading(andPrint = false)
             ReadingUiEvent.RetryPrint        -> retryPrint()
             ReadingUiEvent.DisconnectPrinter -> printerManager.disconnect()
+            ReadingUiEvent.NextHousehold     -> viewModelScope.launch { _readingComplete.send(accountNo) }
         }
     }
 
@@ -245,13 +255,10 @@ class ReadingViewModel @Inject constructor(
             try {
                 val currentReading = state.currentReadingInput.toDouble()
 
-                // Read the signed-in reader's name fresh each time, rather than
-                // caching it, so an admin editing a reader's details mid-session
-                // is reflected on the very next reading/bill.
-                val readerName = authRepository.getCurrentReaderProfile()
-                    ?.fullName
-                    ?.ifBlank { null }
-                    ?: "Field Reader"
+                // Never allowed to hold up or prevent the save — see
+                // resolveReaderName. This lookup used to throw offline before the
+                // reading reached Room, so the reading was never recorded.
+                val readerName = resolveReaderName()
 
                 // 1. Persist to Room — reuse the existing row's id (if any) so a
                 //    correction replaces the prior reading instead of creating
@@ -288,9 +295,17 @@ class ReadingViewModel @Inject constructor(
                 SyncReadingsWorker.enqueue(workManager)
 
                 // 3. Print if requested
-                if (andPrint) {
+                val printed = if (andPrint) {
                     printReceipt(state.consumer, state.billing, currentReading, readerName)
+                } else {
+                    true
                 }
+
+                // 4. Straight back to meter entry for the next household — but
+                //    only once the receipt is actually out. Leaving this screen
+                //    clears the ViewModel, which would cancel a print mid-job,
+                //    and if printing failed the reader needs to stay to retry.
+                if (printed) _readingComplete.send(accountNo)
 
             } catch (e: Exception) {
                 _saveError.value = "Failed to save reading: ${e.message}"
@@ -307,21 +322,35 @@ class ReadingViewModel @Inject constructor(
         val current  = state.currentReadingInput.toDoubleOrNull() ?: return
 
         viewModelScope.launch {
-            val readerName = authRepository.getCurrentReaderProfile()
-                ?.fullName
-                ?.ifBlank { null }
-                ?: "Field Reader"
-            printReceipt(consumer, billing, current, readerName)
+            val printed = printReceipt(consumer, billing, current, resolveReaderName())
+            // A retry that works after a save finishes the household too.
+            if (printed && uiState.value.savedReadingId != null) _readingComplete.send(accountNo)
         }
     }
 
+    /**
+     * The signed-in reader's name for the receipt.
+     *
+     * Read fresh when the network allows, so an admin renaming a reader
+     * mid-session shows on the very next bill — but capped, and with a fallback,
+     * so it can never block the save. On a weak signal an unbounded lookup could
+     * stall saving for a full network timeout.
+     */
+    private suspend fun resolveReaderName(): String {
+        val profile = withTimeoutOrNull(READER_NAME_TIMEOUT_MS) {
+            authRepository.getCurrentReaderProfile()
+        } ?: authRepository.lastKnownProfile
+        return profile?.fullName?.ifBlank { null } ?: "Field Reader"
+    }
+
+    /** @return true if the receipt printed. */
     private suspend fun printReceipt(
         consumer: ConsumerEntity,
         billing: BillingResult,
         currentReading: Double,
         readByName: String
-    ) {
-        printerManager.print {
+    ): Boolean {
+        return printerManager.print {
             WaterBillReceiptBuilder.build(
                 consumer       = consumer,
                 billing        = billing,
@@ -400,8 +429,13 @@ class ReadingViewModel @Inject constructor(
         }
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        printerManager.disconnect()
+    // The printer is deliberately NOT disconnected when this screen closes.
+    // Readers now return to meter entry after every household, so dropping the
+    // Bluetooth link here would mean reconnecting to the printer at every
+    // single house. The printer manager is an app-wide singleton; the reader
+    // can still disconnect explicitly from the printer card.
+
+    private companion object {
+        const val READER_NAME_TIMEOUT_MS = 2_000L
     }
 }
