@@ -14,6 +14,7 @@ import android.net.Uri
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.waterdistrict.meterreader.ui.about.AboutScreen
 import com.waterdistrict.meterreader.ui.auth.AuthViewModel
 import com.waterdistrict.meterreader.ui.auth.LoginScreen
 import com.waterdistrict.meterreader.ui.bill.DigitalBillScreen
@@ -76,6 +77,7 @@ private fun MeterReaderNavHost(userEmail: String, onLogout: () -> Unit) {
             SyncScreen(
                 userEmail = userEmail,
                 onLogout = onLogout,
+                onAbout = { navController.navigate("about") },
                 onViewConsumers = { barangay, billingMonth ->
                     navController.navigate(
                         "consumers/${Uri.encode(barangay)}/${Uri.encode(billingMonth)}"
@@ -125,6 +127,9 @@ private fun MeterReaderNavHost(userEmail: String, onLogout: () -> Unit) {
                     }
                 }
             )
+        }
+        composable("about") {
+            AboutScreen(onBack = { navController.popBackStack() })
         }
         composable(
             route = "bill/{readingId}",

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -33,6 +34,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 fun SyncScreen(
     userEmail: String = "",
     onLogout: () -> Unit = {},
+    onAbout: () -> Unit = {},
     onViewConsumers: (barangay: String, billingMonth: String) -> Unit = { _, _ -> },
     viewModel: SyncViewModel = hiltViewModel()
 ) {
@@ -58,6 +60,9 @@ fun SyncScreen(
                         IconButton(onClick = { viewModel.switchBarangay() }) {
                             Icon(Icons.Default.SwapHoriz, contentDescription = "Switch Barangay")
                         }
+                    }
+                    IconButton(onClick = onAbout) {
+                        Icon(Icons.Default.Info, contentDescription = "About this app")
                     }
                     IconButton(onClick = onLogout) {
                         Icon(Icons.Default.Logout, contentDescription = "Log Out")

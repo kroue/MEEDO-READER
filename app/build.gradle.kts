@@ -1,3 +1,4 @@
+import java.time.LocalDate
 import java.util.Properties
 
 plugins {
@@ -17,10 +18,19 @@ android {
         applicationId = "com.meedo.billing"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        // Raised for every build handed out — Android refuses to install an
+        // APK whose versionCode is lower than the one already on the phone,
+        // and with equal codes there is no way to tell two builds apart.
+        versionCode = 2
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Shown on the About screen, so a reader reporting a problem can say
+        // which build is on the phone. Date only, not a timestamp: a value
+        // that changed every minute would invalidate the build config — and
+        // every compile that depends on it — on every single build.
+        buildConfigField("String", "BUILD_DATE", "\"${LocalDate.now()}\"")
     }
 
     // Room writes a JSON schema per database version here, and every migration
@@ -92,6 +102,9 @@ android {
 
     buildFeatures {
         compose = true
+        // Off by default since AGP 8, and the About screen reads the version
+        // name, version code and build date from BuildConfig.
+        buildConfig = true
     }
 }
 
