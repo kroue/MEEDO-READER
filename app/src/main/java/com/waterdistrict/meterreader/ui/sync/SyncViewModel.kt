@@ -2,7 +2,9 @@ package com.waterdistrict.meterreader.ui.sync
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
 import androidx.work.WorkManager
+import com.waterdistrict.meterreader.data.local.MeterReaderDatabase
 import com.waterdistrict.meterreader.data.local.dao.ConsumerDao
 import com.waterdistrict.meterreader.data.local.dao.ReadingDao
 import com.waterdistrict.meterreader.data.local.entity.ReadingEntity
@@ -40,7 +42,8 @@ class SyncViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val consumerDao: ConsumerDao,
     private val readingDao: ReadingDao,
-    private val workManager: WorkManager
+    private val workManager: WorkManager,
+    private val database: MeterReaderDatabase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SyncUiState())
@@ -128,15 +131,24 @@ class SyncViewModel @Inject constructor(
 
             result.onSuccess { downloaded ->
                 try {
-                    // Upsert, never REPLACE — see ConsumerDao.upsertAll for the
-                    // unsynced readings REPLACE used to cascade-delete.
-                    consumerDao.upsertAll(downloaded.map { it.consumer })
-                    hydrateReconciledReadings(downloaded, monthStr)
-                    // Drop consumers left over from earlier cycles so the route
-                    // list reflects this month's assignment rather than
-                    // accumulating every account the device has ever seen.
-                    // Accounts with unsynced readings are kept regardless.
-                    consumerDao.deleteStaleCycles(monthStr)
+                    // One transaction for the whole route. Outside one, every
+                    // household's upsert, and every lookup and insert while
+                    // hydrating readings, was its own commit — its own flush to
+                    // storage — so saving a few hundred accounts meant a few
+                    // hundred disk syncs, seconds of spinner on a cheap phone.
+                    // It also makes the save all-or-nothing: an app killed
+                    // halfway no longer leaves half a route downloaded.
+                    database.withTransaction {
+                        // Upsert, never REPLACE — see ConsumerDao.upsertAll for
+                        // the unsynced readings REPLACE used to cascade-delete.
+                        consumerDao.upsertAll(downloaded.map { it.consumer })
+                        hydrateReconciledReadings(downloaded, monthStr)
+                        // Drop consumers left over from earlier cycles so the
+                        // route reflects this month's assignment rather than
+                        // accumulating every account the device has ever seen.
+                        // Accounts with unsynced readings are kept regardless.
+                        consumerDao.deleteStaleCycles(monthStr)
+                    }
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         success = true,

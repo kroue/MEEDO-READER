@@ -1,0 +1,22 @@
+# Baseline profile for the app's own code.
+#
+# The APK is installed by hand, not through Google Play, so it never receives
+# Play's cloud profiles: on a fresh install Android runs this app's code in the
+# interpreter and JIT-compiles it bit by bit, which is most of why the first
+# launches — and the first time each screen opens — are slow on a cheap phone.
+# These rules ask Android to compile the app's own classes ahead of time at
+# install instead. The libraries (Compose, Room, WorkManager and so on) ship
+# their own profiles, which the build merges in alongside this one, and
+# ProfileInstaller (pulled in by Compose) applies the result on sideloaded
+# installs.
+#
+# One broad rule rather than a generated list: the app is small, so compiling
+# all of its own code costs little install time, and a wildcard can't go stale
+# as screens are added. The build expands it against the real classes before
+# R8 runs, and R8 carries the result through its renaming — check
+# app/build/intermediates/r8_art_profile/release/ if in doubt: the final
+# profile should hold thousands of lines, not the libraries' few hundred.
+#
+# H = hot, S = used at startup, P = used after startup.
+HSPLcom/waterdistrict/meterreader/**->**(**)**
+Lcom/waterdistrict/meterreader/**;

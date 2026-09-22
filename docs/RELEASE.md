@@ -78,6 +78,18 @@ signed-in reader — which is what you want for an update. Otherwise copy
 the APK to the phone and open it; Android will ask permission to install
 from that source the first time.
 
+## Start-up speed
+
+A sideloaded APK never gets the compiled-code profiles Google Play hands out,
+so on a fresh install Android interprets the app and compiles it piecemeal
+while readers are using it. `app/src/main/baseline-prof.txt` asks Android to
+compile the app's own code at install instead; the libraries ship their own
+profiles, and ProfileInstaller (pulled in by Compose) applies the lot.
+
+Nothing to do per release — the build picks it up. If start-up ever regresses
+badly, a profile recorded from real use on a device (the Baseline Profile
+Gradle plugin with a Macrobenchmark module) is the next step.
+
 ## Version numbers
 
 `versionCode` and `versionName` in `app/build.gradle.kts`. Raise
