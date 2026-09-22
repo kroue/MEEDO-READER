@@ -368,7 +368,8 @@ class FirebaseRepository @Inject constructor() {
                     delinquentSinceMillis = delinquentSince,
                     creditBalance = creditAvailable,
                     now = reading.readingDate,
-                    extensionFeeAlreadyCharged = extensionFeeAlreadyCharged
+                    extensionFeeAlreadyCharged = extensionFeeAlreadyCharged,
+                    barangay = consumer.routeId
                 )
 
                 // ── OR number ────────────────────────────────────────────────

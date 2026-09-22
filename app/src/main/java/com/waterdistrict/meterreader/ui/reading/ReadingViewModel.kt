@@ -413,7 +413,8 @@ class ReadingViewModel @Inject constructor(
                 overdueBalance  = consumer.overdueBalance,
                 delinquentSinceMillis = consumer.delinquentSinceMillis,
                 creditBalance   = consumer.creditBalance,
-                extensionFeeAlreadyCharged = consumer.extensionFeeAlreadyCharged
+                extensionFeeAlreadyCharged = consumer.extensionFeeAlreadyCharged,
+                barangay        = consumer.routeId
             )
             ComputedBilling(
                 billing = result,

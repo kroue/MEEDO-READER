@@ -80,7 +80,7 @@ data class BillingResult(
 
     val totalAmountDue: Double,     // what the concessionaire pays now, never negative
 
-    val dueDateMillis: Long,            // billing date + grace period — pay on/before this to avoid the surcharge
+    val dueDateMillis: Long,            // the barangay's due day (see DueDates) — pay on/before this to avoid the surcharge
     val projectedOverdueTotal: Double,  // what totalAmountDue becomes if THIS bill isn't paid by dueDateMillis
 
     /** True when the meter reading wrapped past [WaterRateConfig.meterMaxReading]. */
@@ -214,6 +214,8 @@ object WaterBillingCalculator {
         creditBalance: Double = 0.0,
         now: Long = System.currentTimeMillis(),
         extensionFeeAlreadyCharged: Boolean = false,
+        /** The account's barangay, which fixes its due day — see [DueDates]. */
+        barangay: String? = null,
         config: WaterRateConfig = WaterRateConfig()
     ): BillingResult {
         val (consumption, meterRolledOver) = consumptionFor(previousReading, currentReading, config)
@@ -247,7 +249,7 @@ object WaterBillingCalculator {
         // What the concessionaire would owe if THIS bill goes unpaid past its
         // own due date — mirrors exactly how the next bill would treat it as the
         // new overdue balance, so the printed figure matches what actually happens.
-        val dueDateMillis = now + config.gracePeriodDays.toLong() * 86_400_000L
+        val dueDateMillis = DueDates.dueDateFor(barangay, now, config.gracePeriodDays)
         val extensionFeeUsedForThisDebt = extensionFeeAlreadyCharged || extensionFee > 0
         val projectedSurcharge = toCentavos(totalAmountDue * config.overdueSurchargeRate)
         val projectedExtensionFee = if (extensionFeeUsedForThisDebt) 0.0 else config.extensionFee
