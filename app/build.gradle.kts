@@ -21,8 +21,8 @@ android {
         // Raised for every build handed out — Android refuses to install an
         // APK whose versionCode is lower than the one already on the phone,
         // and with equal codes there is no way to tell two builds apart.
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -100,6 +100,25 @@ android {
         )
     }
 
+    testOptions {
+        unitTests {
+            // Robolectric renders the design snapshots from real resources.
+            isIncludeAndroidResources = true
+            all { test ->
+                // DesignSnapshots draws every screen to a PNG in app/build/design
+                // for reviewing the layout without a phone. Slow, and only wanted
+                // when looking at the design: run with -Psnapshots.
+                test.filter.isFailOnNoMatchingTests = false
+                if (project.hasProperty("snapshots")) {
+                    test.systemProperty("roborazzi.test.record", "true")
+                    test.filter.includeTestsMatching("*DesignSnapshots*")
+                } else {
+                    test.filter.excludeTestsMatching("*DesignSnapshots*")
+                }
+            }
+        }
+    }
+
     buildFeatures {
         compose = true
         // Off by default since AGP 8, and the About screen reads the version
@@ -154,6 +173,13 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockk)
     testImplementation(libs.androidx.room.testing)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.ui.test.junit4)
+    testImplementation(libs.androidx.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    debugImplementation(libs.androidx.ui.test.manifest)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.room.testing)

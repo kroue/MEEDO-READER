@@ -1,238 +1,371 @@
 package com.waterdistrict.meterreader.ui.sync
 
-import com.waterdistrict.meterreader.domain.billing.BillingMonth
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.HourglassEmpty
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.waterdistrict.meterreader.domain.billing.BillingMonth
+import com.waterdistrict.meterreader.domain.billing.DueDates
+import com.waterdistrict.meterreader.ui.components.AppTopBar
+import com.waterdistrict.meterreader.ui.components.BottomActionBar
+import com.waterdistrict.meterreader.ui.components.EmptyState
+import com.waterdistrict.meterreader.ui.components.PrimaryButton
+import com.waterdistrict.meterreader.ui.components.SecondaryButton
+import com.waterdistrict.meterreader.ui.components.SectionCard
+import com.waterdistrict.meterreader.ui.components.StatusBanner
+import com.waterdistrict.meterreader.ui.components.StatusPill
+import com.waterdistrict.meterreader.ui.components.Tone
+import com.waterdistrict.meterreader.ui.components.barangayLabel
+import com.waterdistrict.meterreader.ui.components.ordinal
+import com.waterdistrict.meterreader.ui.theme.BrandBlue800
+import com.waterdistrict.meterreader.ui.theme.BrandBlue900
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Home: which barangay to read, whether this phone and the office agree, and
+ * the way into reading.
+ */
 @Composable
 fun SyncScreen(
     userEmail: String = "",
-    onLogout: () -> Unit = {},
-    onAbout: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     onViewConsumers: (barangay: String, billingMonth: String) -> Unit = { _, _ -> },
     viewModel: SyncViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    SyncContent(
+        state = uiState,
+        username = userEmail,
+        onOpenSettings = onOpenSettings,
+        onSyncNow = viewModel::syncNow,
+        onSelectBarangay = viewModel::selectBarangay,
+        onSwitchBarangay = viewModel::switchBarangay,
+        onStartReading = { barangay ->
+            // Carry the cycle forward so meter entry and the reading screen
+            // scope their local state to it.
+            onViewConsumers(barangay, uiState.assignedMonthStr ?: BillingMonth.current())
+        },
+    )
+}
+
+@Composable
+fun SyncContent(
+    state: SyncUiState,
+    username: String,
+    onOpenSettings: () -> Unit = {},
+    onSyncNow: () -> Unit = {},
+    onSelectBarangay: (String) -> Unit = {},
+    onSwitchBarangay: () -> Unit = {},
+    onStartReading: (String) -> Unit = {},
+) {
+    val selected = state.selectedBarangay
+    val month = state.assignedMonthStr ?: BillingMonth.current()
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("Mobile Sync", fontWeight = FontWeight.Bold)
-                        if (userEmail.isNotBlank()) {
-                            Text(
-                                userEmail,
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                },
+            AppTopBar(
+                title = "MEEDO Field",
+                subtitle = if (username.isNotBlank()) "Signed in as $username" else null,
                 actions = {
-                    if (uiState.selectedBarangay != null && uiState.assignedBarangays.size > 1) {
-                        IconButton(onClick = { viewModel.switchBarangay() }) {
-                            Icon(Icons.Default.SwapHoriz, contentDescription = "Switch Barangay")
-                        }
-                    }
-                    IconButton(onClick = onAbout) {
-                        Icon(Icons.Default.Info, contentDescription = "About this app")
-                    }
-                    IconButton(onClick = onLogout) {
-                        Icon(Icons.Default.Logout, contentDescription = "Log Out")
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
                 }
             )
-        }
+        },
+        bottomBar = {
+            if (selected != null && !state.isLoading) {
+                BottomActionBar {
+                    PrimaryButton(
+                        text = "Start reading",
+                        onClick = { onStartReading(selected) },
+                        icon = Icons.AutoMirrored.Filled.ArrowForward,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (state.assignedBarangays.size > 1) {
+                        TextButton(
+                            onClick = onSwitchBarangay,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                        ) {
+                            Text("Read another barangay", style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                }
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(padding)
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        // Manual reconciliation: re-pull the assigned list and force-push any
-        // readings still waiting locally, so local and Firestore stay in sync
-        // without needing to wait for the automatic triggers.
-        OutlinedButton(
-            onClick = { viewModel.syncNow() },
-            enabled = !uiState.isLoading,
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Sync Now")
-        }
+            SyncStatusCard(
+                month = month,
+                pendingUploads = state.pendingUploadCount,
+                syncing = state.isLoading,
+                onSyncNow = onSyncNow
+            )
 
-        if (uiState.pendingUploadCount > 0) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.CloudUpload,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+            when {
+                state.assignedBarangays.isEmpty() -> EmptyState(
+                    icon = Icons.Default.HourglassEmpty,
+                    title = "No barangay assigned yet",
+                    body = "The office assigns barangays to you from the Mobile Sync page. " +
+                        "This screen updates on its own the moment they do."
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+
+                selected == null -> BarangayPicker(
+                    barangays = state.assignedBarangays,
+                    onSelect = onSelectBarangay
+                )
+
+                else -> NowReadingCard(
+                    barangay = selected,
+                    month = month,
+                    loading = state.isLoading,
+                    message = state.message,
+                    success = state.success
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncStatusCard(
+    month: String,
+    pendingUploads: Int,
+    syncing: Boolean,
+    onSyncNow: () -> Unit,
+) {
+    SectionCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = "${uiState.pendingUploadCount} reading(s) waiting to upload",
-                    fontSize = 12.sp,
+                    "Billing cycle",
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Text(month, style = MaterialTheme.typography.titleLarge)
+            }
+            if (pendingUploads > 0) {
+                StatusPill(
+                    text = "$pendingUploads to upload",
+                    tone = Tone.Warning,
+                    icon = Icons.Default.CloudUpload
+                )
+            } else {
+                StatusPill(text = "All uploaded", tone = Tone.Success, icon = Icons.Default.CloudDone)
             }
         }
+        Spacer(Modifier.size(14.dp))
+        SecondaryButton(
+            text = "Sync now",
+            onClick = onSyncNow,
+            loading = syncing,
+            icon = Icons.Default.Sync,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            if (pendingUploads > 0) {
+                "Readings upload on their own whenever there's a signal. Sync now sends them straight away."
+            } else {
+                "Sync now fetches any change the office made to your route."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+    }
+}
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        val selectedBarangay = uiState.selectedBarangay
-
-        if (uiState.assignedBarangays.isEmpty()) {
-            Icon(
-                Icons.Default.HourglassEmpty,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+@Composable
+private fun BarangayPicker(barangays: List<String>, onSelect: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column {
+            Text("Where are you reading today?", style = MaterialTheme.typography.titleMedium)
             Text(
-                text = "Waiting for assigned Barangay...",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Your admin will assign one or more Barangays to your account from the Mobile Sync page.",
-                fontSize = 14.sp,
+                "${barangays.size} barangay${if (barangays.size == 1) "" else "s"} assigned to you",
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        } else if (selectedBarangay == null) {
-            Text(
-                text = "Choose a Barangay to start reading",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "${uiState.assignedBarangays.size} Barangay(s) assigned to you",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+        }
+        barangays.forEach { barangay ->
+            val dueDay = DueDates.dueDayFor(barangay)
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surface,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.large)
+                    .clickable { onSelect(barangay) }
             ) {
-                items(uiState.assignedBarangays) { barangay ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable { viewModel.selectBarangay(barangay) }
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.LocationOn, contentDescription = null)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(barangay, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
-                    }
-                }
-            }
-        } else {
-            Text(
-                text = "Now Reading",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = selectedBarangay,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            if (uiState.isLoading) {
-                CircularProgressIndicator(modifier = Modifier.size(32.dp))
-                Spacer(modifier = Modifier.height(12.dp))
-                Text("Downloading assigned concessionaires...", fontSize = 14.sp)
-            }
-
-            uiState.message?.let { message ->
-                val isSuccess = uiState.success
-                val bannerColor = if (isSuccess) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error
-                val icon = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Error
-
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(bannerColor.copy(alpha = 0.1f))
-                        .padding(16.dp),
+                        .heightIn(min = 76.dp)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(icon, contentDescription = null, tint = bannerColor)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(message, color = bannerColor, fontWeight = FontWeight.Medium)
-                }
-            }
-
-            if (!uiState.isLoading) {
-                Spacer(modifier = Modifier.height(24.dp))
-                Button(
-                    onClick = {
-                        // Carry the cycle forward so the consumer list and the
-                        // reading screen scope their local state to it.
-                        onViewConsumers(
-                            selectedBarangay,
-                            uiState.assignedMonthStr ?: BillingMonth.current()
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                    ) {
+                        Icon(
+                            Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
                         )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Start Reading", fontSize = 16.sp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(barangayLabel(barangay), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (dueDay != null) "Bills due every ${ordinal(dueDay)}"
+                            else "Bills due ${DueDates.DEFAULT_DUE_AFTER_DAYS} days after reading",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun NowReadingCard(
+    barangay: String,
+    month: String,
+    loading: Boolean,
+    message: String?,
+    success: Boolean,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            color = Color.Transparent,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .background(Brush.linearGradient(listOf(BrandBlue900, BrandBlue800)))
+                    .padding(20.dp)
+            ) {
+                Text(
+                    "Now reading",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White.copy(alpha = 0.8f)
+                )
+                Text(
+                    barangayLabel(barangay),
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = Color.White
+                )
+                Text(
+                    month,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color.White.copy(alpha = 0.85f)
+                )
+                DueDates.dueDayFor(barangay)?.let { day ->
+                    Spacer(Modifier.size(10.dp))
+                    Text(
+                        "Bills from this route are due on the ${ordinal(day)}.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                }
+            }
+        }
+
+        if (loading) {
+            SectionCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
+                    Spacer(Modifier.width(14.dp))
+                    Column {
+                        Text("Downloading your route…", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Keep the app open until it finishes.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        message?.let {
+            StatusBanner(
+                text = it,
+                tone = if (success) Tone.Success else Tone.Error,
+                title = if (success) "Route ready" else "Couldn't download the route"
+            )
+        }
+
+        if (!loading && message == null) {
+            Text(
+                "Your route is on this phone. Readings work without a signal and upload later.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Normal
+            )
+        }
     }
 }

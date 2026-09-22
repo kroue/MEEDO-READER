@@ -1,23 +1,47 @@
 package com.waterdistrict.meterreader.ui.about
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Policy
+import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.waterdistrict.meterreader.BuildConfig
-import com.waterdistrict.meterreader.ui.theme.BrandTeal300
-import com.waterdistrict.meterreader.ui.theme.SurfaceCard
-import com.waterdistrict.meterreader.ui.theme.TextPrimaryDark
-import com.waterdistrict.meterreader.ui.theme.TextSecondaryDark
+import com.waterdistrict.meterreader.R
+import com.waterdistrict.meterreader.ui.components.AppTopBar
+import com.waterdistrict.meterreader.ui.components.KeyValueRow
+import com.waterdistrict.meterreader.ui.components.SectionCard
 
 /**
  * Who made the app, who owns it, what a reader is agreeing to by using it,
@@ -52,147 +76,119 @@ private val OPEN_SOURCE = listOf(
     Triple("Google client libraries", "33.1.2", "Apache-2.0"),
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen(onBack: () -> Unit = {}) {
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("About", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            )
-        }
+        topBar = { AppTopBar(title = "About", onBack = onBack) },
+        containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Column {
-                Text(
-                    "MEEDO Field",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimaryDark
-                )
-                Text(SYSTEM_NAME, fontSize = 13.sp, color = TextSecondaryDark)
-                Text(SYSTEM_ADDRESS, fontSize = 12.sp, color = TextSecondaryDark)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Meter readings taken house to house, billed on the spot, and uploaded " +
-                        "to the office when there is a signal.",
-                    fontSize = 13.sp,
-                    color = TextSecondaryDark
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(68.dp)
+                        .clip(CircleShape)
+                        .background(Color.White),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(R.mipmap.ic_launcher_foreground),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(scaleX = 1.5f, scaleY = 1.5f)
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+                Column {
+                    Text("MEEDO Field", style = MaterialTheme.typography.titleLarge)
+                    Muted(SYSTEM_NAME)
+                    Muted(SYSTEM_ADDRESS)
+                }
             }
+            Muted(
+                "Meter readings taken house to house, billed on the spot, and uploaded to the " +
+                    "office when there is a signal."
+            )
 
-            AboutCard(title = "Developer") {
-                Text(DEVELOPER_NAME, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimaryDark)
-                Spacer(Modifier.height(6.dp))
-                Text(DEVELOPER_EMAIL, fontSize = 13.sp, color = BrandTeal300)
-                Text(DEVELOPER_PHONE, fontSize = 13.sp, color = BrandTeal300)
+            SectionCard(title = "Developer", icon = Icons.Default.Code) {
+                Text(DEVELOPER_NAME, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
-                Text(
+                ContactRow(Icons.Default.Email, DEVELOPER_EMAIL)
+                ContactRow(Icons.Default.Phone, DEVELOPER_PHONE)
+                Spacer(Modifier.height(8.dp))
+                Muted(
                     "For a household's bill or balance, ask the office — they can see the " +
-                        "account. Call the developer when the app itself is misbehaving.",
-                    fontSize = 12.sp,
-                    color = TextSecondaryDark
+                        "account. Call the developer when the app itself is misbehaving."
                 )
             }
 
-            AboutCard(title = "Ownership and copyright") {
+            SectionCard(title = "Ownership and copyright", icon = Icons.Default.Business) {
                 Text(
                     "© $COPYRIGHT_YEAR $SYSTEM_NAME. All rights reserved.",
-                    fontSize = 13.sp,
-                    color = TextPrimaryDark
+                    style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(6.dp))
-                Text(
+                Muted(
                     "The app and its source code belong to the water system. So does every " +
                         "record it holds — the households on your route, their readings and " +
-                        "their balances.",
-                    fontSize = 12.sp,
-                    color = TextSecondaryDark
+                        "their balances."
                 )
             }
 
-            AboutCard(title = "Terms of use") {
+            SectionCard(title = "Terms of use", icon = Icons.Default.Gavel) {
                 Bullet("This app is for readers the office has issued an account to. Do not sign in for anyone else, and do not let anyone else use your sign-in.")
                 Bullet("Every reading you save carries your name and the time you took it, and the office can see both. A reading is a record, not a note.")
                 Bullet("Read the meter in front of you and enter what it says. If a number looks wrong, save what is on the dial and tell the office — do not adjust it to look right.")
                 Bullet("The phone is office equipment. Keep it locked, and hand it back when you leave the route.")
             }
 
-            AboutCard(title = "Data privacy") {
+            SectionCard(title = "Data privacy", icon = Icons.Default.Policy) {
                 Text(
                     "Republic Act No. 10173 — the Data Privacy Act of 2012.",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimaryDark
+                    style = MaterialTheme.typography.titleSmall
                 )
-                Spacer(Modifier.height(8.dp))
-                Text(
+                Spacer(Modifier.height(6.dp))
+                Muted(
                     "This phone carries personal information about residents: names, " +
                         "addresses, what they used and what they owe. The law makes the office " +
-                        "answerable for it, and you answerable for what you do with it.",
-                    fontSize = 12.sp,
-                    color = TextSecondaryDark
+                        "answerable for it, and you answerable for what you do with it."
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
                 Bullet("Open only the household you are standing at. The app asks for a meter number rather than showing a list for exactly this reason.")
                 Bullet("Do not photograph the screen, copy records, or send anyone's details through a personal message.")
                 Bullet("Hand a receipt to the household it belongs to, nobody else.")
                 Bullet("If this phone is lost or stolen, tell the office the same day. A breach that could harm people must be reported to the National Privacy Commission within 72 hours of the office learning of it.")
-                Spacer(Modifier.height(8.dp))
-                Text(
+                Spacer(Modifier.height(6.dp))
+                Muted(
                     "A working summary for readers, not legal advice. The office's data " +
-                        "protection officer has the final word.",
-                    fontSize = 11.sp,
-                    color = TextSecondaryDark
+                        "protection officer has the final word."
                 )
             }
 
-            AboutCard(title = "Open-source components") {
+            SectionCard(title = "Open-source components", icon = Icons.Default.Description) {
                 OPEN_SOURCE.forEach { (name, version, licence) ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(name, fontSize = 13.sp, color = TextPrimaryDark)
-                            Text(version, fontSize = 11.sp, color = TextSecondaryDark)
-                        }
-                        Text(licence, fontSize = 11.sp, color = TextSecondaryDark)
-                    }
+                    KeyValueRow("$name $version", licence)
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Copyright in each stays with its own authors, and each is used under the " +
-                        "licence named.",
-                    fontSize = 11.sp,
-                    color = TextSecondaryDark
-                )
+                Spacer(Modifier.height(6.dp))
+                Muted("Copyright in each stays with its own authors, and each is used under the licence named.")
             }
 
-            AboutCard(title = "This build") {
-                InfoRow("Version", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
-                InfoRow("Built", BuildConfig.BUILD_DATE)
-                InfoRow("App ID", BuildConfig.APPLICATION_ID)
-                Spacer(Modifier.height(8.dp))
-                Text(
+            SectionCard(title = "This build", icon = Icons.Default.Tag) {
+                KeyValueRow("Version", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+                KeyValueRow("Built", BuildConfig.BUILD_DATE)
+                KeyValueRow("App ID", BuildConfig.APPLICATION_ID)
+                Spacer(Modifier.height(6.dp))
+                Muted(
                     "Quote the version when you report a problem — it is the quickest way to " +
-                        "know whether the phone has the fix.",
-                    fontSize = 11.sp,
-                    color = TextSecondaryDark
+                        "know whether the phone has the fix."
                 )
             }
 
@@ -202,42 +198,27 @@ fun AboutScreen(onBack: () -> Unit = {}) {
 }
 
 @Composable
-private fun AboutCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceCard)
+private fun ContactRow(icon: ImageVector, text: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(vertical = 4.dp)
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(
-                title,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimaryDark
-            )
-            Spacer(Modifier.height(10.dp))
-            content()
-        }
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
     }
+}
+
+@Composable
+private fun Muted(text: String) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
 private fun Bullet(text: String) {
     Row(modifier = Modifier.padding(vertical = 4.dp)) {
-        Text("•", fontSize = 13.sp, color = TextSecondaryDark)
-        Spacer(Modifier.width(8.dp))
-        Text(text, fontSize = 12.sp, color = TextSecondaryDark)
-    }
-}
-
-@Composable
-private fun InfoRow(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp)
-    ) {
-        Text(label, fontSize = 12.sp, color = TextSecondaryDark, modifier = Modifier.width(72.dp))
-        Text(value, fontSize = 12.sp, color = TextPrimaryDark)
+        Text("•", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(10.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium)
     }
 }

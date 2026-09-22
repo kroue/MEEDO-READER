@@ -1,8 +1,12 @@
 package com.waterdistrict.meterreader.data.remote
 
+import com.google.firebase.FirebaseNetworkException
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
 import kotlinx.coroutines.channels.awaitClose
@@ -30,6 +34,15 @@ data class ReaderProfile(
 
 /** The synthetic email domain admin-created field-reader accounts live under — see water-billing-admin's createFieldReader.ts. */
 private const val USERNAME_DOMAIN = "meedo.local"
+
+/**
+ * The console's own minimum (createFieldReader.ts MIN_PASSWORD_LENGTH), so a
+ * reader can't choose a password the office would have refused to set.
+ */
+const val MIN_PASSWORD_LENGTH = 10
+
+/** A change the account can't make, worded for the person holding the phone. */
+class AccountChangeException(message: String) : Exception(message)
 
 /**
  * Field-reader login — a plain username and password, no email involved on
@@ -86,6 +99,76 @@ class AuthRepository @Inject constructor() {
     fun logout() {
         cachedProfile = null
         auth.signOut()
+    }
+
+    /**
+     * Saves the reader's own name and phone number — the only fields on their
+     * account the security rules let them change. Role, username and whether
+     * the account is enabled stay the office's to set.
+     */
+    suspend fun updateOwnProfile(firstName: String, lastName: String, phoneNumber: String) {
+        val uid = currentUserId ?: throw AccountChangeException("You're signed out. Sign in again first.")
+        val profile = ReaderProfile(firstName.trim(), lastName.trim(), phoneNumber.trim())
+        if (profile.firstName.isEmpty() || profile.lastName.isEmpty()) {
+            throw AccountChangeException("First and last name are both needed.")
+        }
+        try {
+            firestore.collection("users").document(uid).update(
+                mapOf(
+                    "firstName" to profile.firstName,
+                    "lastName" to profile.lastName,
+                    "phoneNumber" to profile.phoneNumber,
+                )
+            ).await()
+        } catch (e: Exception) {
+            throw AccountChangeException(plainMessage(e, "Your details couldn't be saved. Try again."))
+        }
+        cachedProfile = profile
+        recordAccountChange("Updated their own profile details from the field app.")
+    }
+
+    /**
+     * Changes the reader's own password. Asks for the current one first:
+     * being signed in isn't enough, since a phone left unlocked on a route is
+     * exactly how an account gets taken.
+     */
+    suspend fun changePassword(currentPassword: String, newPassword: String) {
+        val user = auth.currentUser ?: throw AccountChangeException("You're signed out. Sign in again first.")
+        val email = user.email ?: throw AccountChangeException("This account can't change its password here.")
+        if (newPassword.length < MIN_PASSWORD_LENGTH) {
+            throw AccountChangeException("Use at least $MIN_PASSWORD_LENGTH characters.")
+        }
+        try {
+            user.reauthenticate(EmailAuthProvider.getCredential(email, currentPassword)).await()
+        } catch (e: FirebaseAuthInvalidCredentialsException) {
+            throw AccountChangeException("That isn't your current password.")
+        } catch (e: Exception) {
+            throw AccountChangeException(plainMessage(e, "Your password couldn't be checked. Try again."))
+        }
+        try {
+            user.updatePassword(newPassword).await()
+        } catch (e: Exception) {
+            throw AccountChangeException(plainMessage(e, "Your password couldn't be changed. Try again."))
+        }
+        recordAccountChange("Changed their own password from the field app.")
+    }
+
+    /** Appends to the office's audit trail. Best effort: it must never block the change itself. */
+    private fun recordAccountChange(description: String) {
+        val email = auth.currentUser?.email ?: return
+        firestore.collection("auditLogs").add(
+            mapOf(
+                "actionType" to "Account Update",
+                "description" to description,
+                "user" to email,
+                "timestamp" to FieldValue.serverTimestamp(),
+            )
+        )
+    }
+
+    private fun plainMessage(e: Exception, fallback: String): String = when (e) {
+        is FirebaseNetworkException -> "No connection. This needs a signal — try again when you have one."
+        else -> fallback
     }
 
     /**

@@ -78,6 +78,19 @@ signed-in reader — which is what you want for an update. Otherwise copy
 the APK to the phone and open it; Android will ask permission to install
 from that source the first time.
 
+## Looking at the screens without a phone
+
+```
+gradlew.bat testDebugUnitTest -Psnapshots
+```
+
+draws every screen, with made-up households, to PNGs in `app/build/design/`
+— light and dark, a phone-sized view and a full-length one. It runs on this
+PC (Robolectric), so it needs no phone, no emulator and no signed-in account.
+The first run downloads Robolectric's Android image and takes a few minutes.
+
+Ordinary `testDebugUnitTest` runs leave these out.
+
 ## Start-up speed
 
 A sideloaded APK never gets the compiled-code profiles Google Play hands out,
