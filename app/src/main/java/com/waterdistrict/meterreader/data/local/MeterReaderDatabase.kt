@@ -54,7 +54,7 @@ class SyncStatusConverter {
         ConsumerEntity::class,
         ReadingEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true   // keeps a schema JSON for auditing migrations
 )
 @TypeConverters(SyncStatusConverter::class)
@@ -211,6 +211,30 @@ abstract class MeterReaderDatabase : RoomDatabase() {
             }
         }
 
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_7_8)
+        /**
+         * 8 → 9: carry the office's own account number.
+         *
+         * Until now the phone had one identifier per household — the meter
+         * number — and printed it under "Account No", while the console
+         * printed the generated account number ("2026-000042"). The same
+         * household was handed two different account numbers on paper. The
+         * office's number now rides along with the route and is what the
+         * receipt prints; the meter number stays what a reader types and what
+         * local rows are keyed by, since a meter can be swapped without the
+         * account changing.
+         *
+         * Blank for rows downloaded before this, and for accounts the office
+         * opened before it numbered them; the receipt falls back to the meter
+         * number in that case.
+         */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE consumers ADD COLUMN office_account_no TEXT NOT NULL DEFAULT ''"
+                )
+            }
+        }
+
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_7_8, MIGRATION_8_9)
     }
 }

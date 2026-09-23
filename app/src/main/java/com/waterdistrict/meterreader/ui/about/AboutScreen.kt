@@ -55,9 +55,17 @@ import com.waterdistrict.meterreader.ui.components.SectionCard
  * still read the terms they are working under and find who to call.
  */
 
-private const val DEVELOPER_NAME = "Aljohn Arranguez"
-private const val DEVELOPER_EMAIL = "arranguez.aljohn0130@gmail.com"
-private const val DEVELOPER_PHONE = "+63 953 538 3369"
+/** Who to reach when the app itself is at fault. */
+private data class Developer(val name: String, val email: String, val phone: String)
+
+private val DEVELOPERS = listOf(
+    Developer("Melvin", "piolo.melvin17@gmail.com", "0906 780 7028"),
+    Developer("Aljohn Arranguez", "arranguez.aljohn0130@gmail.com", "+63 953 538 3369"),
+)
+
+/** The company that built the system, and owns it. */
+private const val COMPANY_NAME = "Sysware"
+private const val COMPANY_FULL_NAME = "Sysware Computer Sales & Services"
 
 private const val SYSTEM_NAME = "South Wao Water System (MEEDO)"
 private const val SYSTEM_ADDRESS = "Wao, Lanao del Sur"
@@ -118,28 +126,32 @@ fun AboutScreen(onBack: () -> Unit = {}) {
                     "office when there is a signal."
             )
 
-            SectionCard(title = "Developer", icon = Icons.Default.Code) {
-                Text(DEVELOPER_NAME, style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(8.dp))
-                ContactRow(Icons.Default.Email, DEVELOPER_EMAIL)
-                ContactRow(Icons.Default.Phone, DEVELOPER_PHONE)
+            SectionCard(title = "Developers", icon = Icons.Default.Code) {
+                DEVELOPERS.forEachIndexed { index, developer ->
+                    if (index > 0) Spacer(Modifier.height(12.dp))
+                    Text(developer.name, style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(4.dp))
+                    ContactRow(Icons.Default.Email, developer.email)
+                    ContactRow(Icons.Default.Phone, developer.phone)
+                }
                 Spacer(Modifier.height(8.dp))
                 Muted(
                     "For a household's bill or balance, ask the office — they can see the " +
-                        "account. Call the developer when the app itself is misbehaving."
+                        "account. Call a developer when the app itself is misbehaving."
                 )
             }
 
             SectionCard(title = "Ownership and copyright", icon = Icons.Default.Business) {
                 Text(
-                    "© $COPYRIGHT_YEAR $SYSTEM_NAME. All rights reserved.",
+                    "© $COPYRIGHT_YEAR $COMPANY_FULL_NAME. All rights reserved.",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(6.dp))
                 Muted(
-                    "The app and its source code belong to the water system. So does every " +
-                        "record it holds — the households on your route, their readings and " +
-                        "their balances."
+                    "The app and its source code belong to $COMPANY_NAME, which built the " +
+                        "system for $SYSTEM_NAME. Every record it holds — the households on " +
+                        "your route, their readings and their balances — belongs to the water " +
+                        "office."
                 )
             }
 

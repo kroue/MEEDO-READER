@@ -21,8 +21,8 @@ android {
         // Raised for every build handed out — Android refuses to install an
         // APK whose versionCode is lower than the one already on the phone,
         // and with equal codes there is no way to tell two builds apart.
-        versionCode = 4
-        versionName = "1.3.0"
+        versionCode = 5
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

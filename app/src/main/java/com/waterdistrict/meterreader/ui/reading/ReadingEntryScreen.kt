@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.waterdistrict.meterreader.data.local.entity.ConsumerEntity
+import com.waterdistrict.meterreader.data.local.entity.displayAccountNo
 import com.waterdistrict.meterreader.domain.billing.BillingResult
 import com.waterdistrict.meterreader.domain.billing.WaterRateConfig
 import com.waterdistrict.meterreader.hardware.bluetooth.PrinterState
@@ -297,7 +298,7 @@ private fun HouseholdCard(consumer: ConsumerEntity) {
         )
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            IdBlock("Account no.", consumer.accountNo, Modifier.weight(1f))
+            IdBlock("Account no.", consumer.displayAccountNo, Modifier.weight(1f))
             IdBlock("Meter no.", consumer.meterNo, Modifier.weight(1f))
         }
     }

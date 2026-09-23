@@ -1,6 +1,7 @@
 package com.waterdistrict.meterreader.hardware.bluetooth
 
 import com.waterdistrict.meterreader.data.local.entity.ConsumerEntity
+import com.waterdistrict.meterreader.data.local.entity.displayAccountNo
 import com.waterdistrict.meterreader.domain.billing.BillingResult
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -91,8 +92,11 @@ object WaterBillReceiptBuilder {
 
             // ── Consumer info ─────────────────────────────────────────────
             .alignLeft()
-            .leftRightText("OR No:", orNumber.ifBlank { "PENDING SYNC" }, LINE_WIDTH)
-            .leftRightText("Account No:", consumer.accountNo, LINE_WIDTH)
+            // No OR number. This slip is the bill a household is handed at the
+            // meter; the official receipt is the one written from the booklet
+            // when they pay at the counter, and printing a number here invited
+            // it to be mistaken for proof of payment.
+            .leftRightText("Account No:", consumer.displayAccountNo, LINE_WIDTH)
             .leftRightText("Meter No:",   consumer.meterNo,   LINE_WIDTH)
             .textLine("Name: ${consumer.name}")
             .textLine("Addr: ${consumer.address}")

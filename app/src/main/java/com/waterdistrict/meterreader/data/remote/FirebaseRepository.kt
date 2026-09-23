@@ -122,6 +122,9 @@ class FirebaseRepository @Inject constructor() {
                     val approval = doc.getString("approvalStatus")
                     if (approval != null && approval != "APPROVED") return@mapNotNull null
                     val accountNo = doc.getString("meterNumber") ?: id // Fallback to id if no meter number
+                    // The office's own account number, printed on receipts —
+                    // separate from the meter number keyed on locally.
+                    val officeAccountNo = doc.getString("accountNumber").orEmpty()
                     val firstName = doc.getString("firstName") ?: ""
                     val lastName = doc.getString("lastName") ?: ""
                     val name = "$firstName $lastName".trim()
@@ -214,6 +217,7 @@ class FirebaseRepository @Inject constructor() {
                         name = name,
                         address = address,
                         meterNo = meterNo,
+                        officeAccountNo = officeAccountNo,
                         prevReading = prevReading,
                         routeId = barangay,
                         firebaseId = id,

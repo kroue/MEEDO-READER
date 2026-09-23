@@ -1,0 +1,335 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 9,
+    "identityHash": "5c35b71626793ebd4dfe7d8d54205366",
+    "entities": [
+      {
+        "tableName": "consumers",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`account_no` TEXT NOT NULL, `name` TEXT NOT NULL, `address` TEXT NOT NULL, `meter_no` TEXT NOT NULL, `office_account_no` TEXT NOT NULL, `prev_reading` REAL NOT NULL, `route_id` TEXT NOT NULL, `firebase_id` TEXT NOT NULL, `prev_reading_month` TEXT NOT NULL, `classification` TEXT NOT NULL, `overdue_balance` REAL NOT NULL, `delinquent_since_millis` INTEGER, `credit_balance` REAL NOT NULL, `extension_fee_already_charged` INTEGER NOT NULL, `already_billed_this_month` INTEGER NOT NULL, `billing_month` TEXT NOT NULL, `billed_reading_this_month` REAL NOT NULL, `billed_amount_this_month` REAL NOT NULL, `sync_status` TEXT NOT NULL, `downloaded_at` INTEGER NOT NULL, PRIMARY KEY(`account_no`))",
+        "fields": [
+          {
+            "fieldPath": "accountNo",
+            "columnName": "account_no",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "address",
+            "columnName": "address",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meterNo",
+            "columnName": "meter_no",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "officeAccountNo",
+            "columnName": "office_account_no",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prevReading",
+            "columnName": "prev_reading",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "routeId",
+            "columnName": "route_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firebaseId",
+            "columnName": "firebase_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prevReadingMonth",
+            "columnName": "prev_reading_month",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "classification",
+            "columnName": "classification",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "overdueBalance",
+            "columnName": "overdue_balance",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "delinquentSinceMillis",
+            "columnName": "delinquent_since_millis",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "creditBalance",
+            "columnName": "credit_balance",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "extensionFeeAlreadyCharged",
+            "columnName": "extension_fee_already_charged",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "alreadyBilledThisMonth",
+            "columnName": "already_billed_this_month",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "billingMonth",
+            "columnName": "billing_month",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "billedReadingThisMonth",
+            "columnName": "billed_reading_this_month",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "billedAmountThisMonth",
+            "columnName": "billed_amount_this_month",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncStatus",
+            "columnName": "sync_status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "downloadedAt",
+            "columnName": "downloaded_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "account_no"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "readings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `account_no` TEXT NOT NULL, `prev_reading` REAL NOT NULL, `current_reading` REAL NOT NULL, `consumption` REAL NOT NULL, `minimum_charge` REAL NOT NULL, `commodity_charge` REAL NOT NULL, `overdue_balance` REAL NOT NULL, `overdue_surcharge` REAL NOT NULL, `extension_fee` REAL NOT NULL, `credit_applied` REAL NOT NULL, `total_amount_due` REAL NOT NULL, `due_date_millis` INTEGER NOT NULL, `projected_overdue_total` REAL NOT NULL, `reading_date` INTEGER NOT NULL, `billing_month` TEXT NOT NULL, `server_total_amount_due` REAL, `sync_status` TEXT NOT NULL, `server_id` TEXT, `or_number` TEXT NOT NULL, `read_by_user_id` TEXT NOT NULL, `remarks` TEXT NOT NULL, FOREIGN KEY(`account_no`) REFERENCES `consumers`(`account_no`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountNo",
+            "columnName": "account_no",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "prevReading",
+            "columnName": "prev_reading",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currentReading",
+            "columnName": "current_reading",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consumption",
+            "columnName": "consumption",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "minimumCharge",
+            "columnName": "minimum_charge",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "commodityCharge",
+            "columnName": "commodity_charge",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "overdueBalance",
+            "columnName": "overdue_balance",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "overdueSurcharge",
+            "columnName": "overdue_surcharge",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "extensionFee",
+            "columnName": "extension_fee",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "creditApplied",
+            "columnName": "credit_applied",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalAmountDue",
+            "columnName": "total_amount_due",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dueDateMillis",
+            "columnName": "due_date_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "projectedOverdueTotal",
+            "columnName": "projected_overdue_total",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "readingDate",
+            "columnName": "reading_date",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "billingMonth",
+            "columnName": "billing_month",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverTotalAmountDue",
+            "columnName": "server_total_amount_due",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "syncStatus",
+            "columnName": "sync_status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverId",
+            "columnName": "server_id",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "orNumber",
+            "columnName": "or_number",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "readByUserId",
+            "columnName": "read_by_user_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remarks",
+            "columnName": "remarks",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_readings_account_no",
+            "unique": false,
+            "columnNames": [
+              "account_no"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_readings_account_no` ON `${TABLE_NAME}` (`account_no`)"
+          },
+          {
+            "name": "index_readings_sync_status",
+            "unique": false,
+            "columnNames": [
+              "sync_status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_readings_sync_status` ON `${TABLE_NAME}` (`sync_status`)"
+          },
+          {
+            "name": "index_readings_account_no_billing_month",
+            "unique": true,
+            "columnNames": [
+              "account_no",
+              "billing_month"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_readings_account_no_billing_month` ON `${TABLE_NAME}` (`account_no`, `billing_month`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "consumers",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "account_no"
+            ],
+            "referencedColumns": [
+              "account_no"
+            ]
+          }
+        ]
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '5c35b71626793ebd4dfe7d8d54205366')"
+    ]
+  }
+}

@@ -38,6 +38,19 @@ data class ConsumerEntity(
     @ColumnInfo(name = "meter_no")
     val meterNo: String,
 
+    /**
+     * The office's own account number, e.g. "2026-000042" — what the console
+     * prints and what the household is known by at the counter. Separate from
+     * [meterNo] on purpose: a meter can be replaced or swapped between
+     * households while the account carries on.
+     *
+     * Blank for rows downloaded before this column existed, and for accounts
+     * the office opened before it numbered them; printing falls back to the
+     * meter number then.
+     */
+    @ColumnInfo(name = "office_account_no")
+    val officeAccountNo: String = "",
+
     @ColumnInfo(name = "prev_reading")
     val prevReading: Double,
 
@@ -101,3 +114,11 @@ data class ConsumerEntity(
     @ColumnInfo(name = "downloaded_at")
     val downloadedAt: Long = System.currentTimeMillis()
 )
+
+/**
+ * The account number to show and to print: the office's own, or the meter
+ * number for accounts opened before the office numbered them. One household,
+ * one number, on the reader's receipt and at the counter alike.
+ */
+val ConsumerEntity.displayAccountNo: String
+    get() = officeAccountNo.ifBlank { meterNo }

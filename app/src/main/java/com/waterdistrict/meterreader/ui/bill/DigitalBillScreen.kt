@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.waterdistrict.meterreader.data.local.entity.ConsumerEntity
+import com.waterdistrict.meterreader.data.local.entity.displayAccountNo
 import com.waterdistrict.meterreader.data.local.entity.ReadingEntity
 import com.waterdistrict.meterreader.domain.billing.WaterRateConfig
 import com.waterdistrict.meterreader.hardware.bluetooth.PrinterState
@@ -187,7 +188,7 @@ private fun BillDocument(consumer: ConsumerEntity, reading: ReadingEntity) {
             SectionDivider(Modifier.padding(top = 8.dp))
 
             KeyValueRow("OR number", reading.orNumber.ifBlank { "Waiting to upload" }, emphasize = reading.orNumber.isNotBlank())
-            KeyValueRow("Account no.", consumer.accountNo)
+            KeyValueRow("Account no.", consumer.displayAccountNo)
             KeyValueRow("Name", consumer.name)
             KeyValueRow("Address", consumer.address)
             KeyValueRow("Meter no.", consumer.meterNo)

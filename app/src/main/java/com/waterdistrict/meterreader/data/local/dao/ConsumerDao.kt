@@ -91,7 +91,9 @@ interface ConsumerDao {
         WHERE  route_id = :routeId
           AND  billing_month = :billingMonth
           AND  (UPPER(TRIM(meter_no)) = UPPER(TRIM(:meterNo))
-                OR UPPER(TRIM(account_no)) = UPPER(TRIM(:meterNo)))
+                OR UPPER(TRIM(account_no)) = UPPER(TRIM(:meterNo))
+                OR (office_account_no <> ''
+                    AND UPPER(TRIM(office_account_no)) = UPPER(TRIM(:meterNo))))
         LIMIT  1
         """
     )

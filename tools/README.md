@@ -24,3 +24,16 @@ migration is a crash on launch rather than silent data loss — better, but stil
 worth catching here first.
 
 Requires only Python 3 (`sqlite3` is in the standard library); no emulator.
+
+## verify_migration_8_9.py
+
+The same check for `MIGRATION_8_9`, which adds the office's own account number
+to `consumers`.
+
+```bash
+python tools/verify_migration_8_9.py
+```
+
+It fills a version-8 database from `8.json`, puts a household in it, runs the
+migration's SQL out of `MeterReaderDatabase.kt`, and compares the result
+against `9.json` — column by column, and checking the household survived.
