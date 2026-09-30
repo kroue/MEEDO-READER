@@ -10,10 +10,12 @@ import com.waterdistrict.meterreader.data.local.entity.ConsumerEntity
 import com.waterdistrict.meterreader.data.local.entity.ReadingEntity
 import com.waterdistrict.meterreader.data.local.entity.SyncStatus
 import com.waterdistrict.meterreader.data.remote.AuthRepository
+import com.waterdistrict.meterreader.data.prefs.RateScheduleStore
 import com.waterdistrict.meterreader.domain.billing.BillingMonth
 import com.waterdistrict.meterreader.domain.billing.BillingResult
 import com.waterdistrict.meterreader.domain.billing.ReadingProblem
 import com.waterdistrict.meterreader.domain.billing.WaterBillingCalculator
+import com.waterdistrict.meterreader.domain.billing.WaterRateConfig
 import com.waterdistrict.meterreader.hardware.bluetooth.BluetoothPrinterManager
 import com.waterdistrict.meterreader.hardware.bluetooth.PrinterState
 import com.waterdistrict.meterreader.hardware.bluetooth.WaterBillReceiptBuilder
@@ -44,6 +46,9 @@ data class ReadingUiState(
 
     // Derived billing (recalculated on every input change)
     val billing: BillingResult? = null,
+    // The rates this month is billed at — from the schedule the phone last
+    // synced (see RateScheduleStore). Shown on the bill and saved with it.
+    val rates: WaterRateConfig = WaterRateConfig(),
     val inputError: String? = null,     // blocks saving
     val inputWarning: String? = null,   // worth confirming, but not a blocker
 
@@ -127,6 +132,7 @@ class ReadingViewModel @Inject constructor(
     private val printerManager: BluetoothPrinterManager,
     private val workManager: WorkManager,
     private val authRepository: AuthRepository,
+    private val rateScheduleStore: RateScheduleStore,
 ) : ViewModel() {
 
     // Account number from NavGraph argument (fallback for testing without NavHost)
@@ -178,7 +184,10 @@ class ReadingViewModel @Inject constructor(
         val saveError         = args[7] as String?
         val existingReading   = args[8] as ReadingEntity?
 
-        val computed = computeBilling(consumer, currentInput)
+        // Read each time rather than captured once, so a schedule that arrives
+        // with a sync while this screen is open is used from the next keypress.
+        val rates = rateScheduleStore.schedule.value.cardForMonth(billingMonth).toConfig()
+        val computed = computeBilling(consumer, currentInput, rates)
 
         val existingBillInfo = when {
             existingReading != null -> ExistingBillInfo(
@@ -202,6 +211,7 @@ class ReadingViewModel @Inject constructor(
             currentReadingInput = currentInput,
             remarks           = remarks,
             billing           = computed.billing,
+            rates             = rates,
             inputError        = computed.error,
             inputWarning      = computed.warning,
             billingMonth      = billingMonth,
@@ -285,7 +295,11 @@ class ReadingViewModel @Inject constructor(
                     serverTotalAmountDue = null,
                     orNumber         = state.existingReading?.orNumber ?: "",
                     readByUserId     = readerName,
-                    remarks          = state.remarks
+                    remarks          = state.remarks,
+                    // The rates this bill was worked out with, reused on upload
+                    // so the office's copy matches the printed one.
+                    commodityRate      = state.rates.commodityRate,
+                    minChargeThreshold = state.rates.minChargeThreshold
                 )
 
                 val localId = readingDao.insert(entity)
@@ -356,6 +370,7 @@ class ReadingViewModel @Inject constructor(
                 billing        = billing,
                 currentReading = currentReading,
                 readByName     = readByName,
+                minChargeThreshold = uiState.value.rates.minChargeThreshold,
             ).let { bytes -> raw(bytes) }
         }
     }
@@ -382,7 +397,8 @@ class ReadingViewModel @Inject constructor(
      */
     private fun computeBilling(
         consumer: ConsumerEntity?,
-        input: String
+        input: String,
+        rates: WaterRateConfig
     ): ComputedBilling {
         if (consumer == null || input.isBlank()) return ComputedBilling()
 
@@ -413,8 +429,8 @@ class ReadingViewModel @Inject constructor(
                 overdueBalance  = consumer.overdueBalance,
                 delinquentSinceMillis = consumer.delinquentSinceMillis,
                 creditBalance   = consumer.creditBalance,
-                extensionFeeAlreadyCharged = consumer.extensionFeeAlreadyCharged,
-                barangay        = consumer.routeId
+                barangay        = consumer.routeId,
+                config          = rates
             )
             ComputedBilling(
                 billing = result,

@@ -2,6 +2,9 @@ package com.waterdistrict.meterreader.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.waterdistrict.meterreader.data.prefs.RateScheduleStore
+import com.waterdistrict.meterreader.domain.billing.BillingMonth
+import com.waterdistrict.meterreader.domain.billing.WaterRateConfig
 import com.waterdistrict.meterreader.data.local.dao.ReadingDao
 import com.waterdistrict.meterreader.data.prefs.AppPreferences
 import com.waterdistrict.meterreader.data.prefs.ReaderPreferences
@@ -50,6 +53,8 @@ data class SettingsUiState(
     val passwordMessage: FormMessage? = null,
     val preferences: ReaderPreferences = ReaderPreferences(),
     val pendingUploads: Int = 0,
+    /** This month's rates, from the schedule the phone last synced. */
+    val rates: WaterRateConfig = WaterRateConfig(),
 ) {
     val fullName: String get() = "${profile.firstName} ${profile.lastName}".trim()
 }
@@ -70,6 +75,7 @@ class SettingsViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val appPreferences: AppPreferences,
     readingDao: ReadingDao,
+    rateScheduleStore: RateScheduleStore,
 ) : ViewModel() {
 
     private val username: String =
@@ -81,7 +87,8 @@ class SettingsViewModel @Inject constructor(
         form,
         appPreferences.state,
         readingDao.getPendingCount(),
-    ) { f, prefs, pending ->
+        rateScheduleStore.schedule,
+    ) { f, prefs, pending, schedule ->
         SettingsUiState(
             username = username,
             profile = f.profile,
@@ -94,6 +101,7 @@ class SettingsViewModel @Inject constructor(
             passwordMessage = f.passwordMessage,
             preferences = prefs,
             pendingUploads = pending,
+            rates = schedule.cardForMonth(BillingMonth.current()).toConfig(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState(username = username))
 

@@ -142,7 +142,7 @@ fun SettingsContent(
 
             DisplayCard(state, onThemeChanged, onLargeTextChanged, onKeepScreenOnChanged)
 
-            BillingReferenceCard()
+            BillingReferenceCard(state.rates)
 
             SectionCard {
                 ListRow(
@@ -437,29 +437,26 @@ private fun DisplayCard(
 }
 
 /**
- * The figures the phone bills by, from the same constants the calculator
- * uses — shown so a reader can answer a household's question on the doorstep,
- * never edited here.
+ * The figures the phone bills by this month — the rates from the schedule it
+ * last synced, which an admin sets in the console — shown so a reader can
+ * answer a household's question on the doorstep. Never edited here.
  */
 @Composable
-private fun BillingReferenceCard() {
-    val rates = WaterRateConfig()
+private fun BillingReferenceCard(rates: WaterRateConfig) {
     SectionCard(title = "What the office bills by", icon = Icons.Default.Receipt) {
-        KeyValueRow("Residential / Government", formatPeso(WaterBillingCalculator.minimumChargeFor("RESIDENTIAL")))
-        KeyValueRow("Commercial A", formatPeso(WaterBillingCalculator.minimumChargeFor("COMMERCIAL A")))
-        KeyValueRow("Commercial B", formatPeso(WaterBillingCalculator.minimumChargeFor("COMMERCIAL B")))
+        KeyValueRow("Residential", formatPeso(WaterBillingCalculator.minimumChargeFor("RESIDENTIAL", rates)))
+        KeyValueRow("Government", formatPeso(WaterBillingCalculator.minimumChargeFor("GOVERNMENT", rates)))
+        KeyValueRow("Commercial A", formatPeso(WaterBillingCalculator.minimumChargeFor("COMMERCIAL A", rates)))
+        KeyValueRow("Commercial B", formatPeso(WaterBillingCalculator.minimumChargeFor("COMMERCIAL B", rates)))
         Text(
             "Minimum charge, covering the first ${rates.minChargeThreshold.toInt()} m³. " +
-                "Each m³ after that is ${formatPeso(rates.commodityRate)}.",
+                "Each m³ after that is ${formatPeso(rates.commodityRate)}. " +
+                "Rates are set by the office and update when this phone syncs.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         SectionDivider()
-        KeyValueRow(
-            "Late surcharge",
-            "${(rates.overdueSurchargeRate * 100).toInt()}% after ${rates.gracePeriodDays} days"
-        )
-        KeyValueRow("Extension fee", "${formatPeso(rates.extensionFee)}, once per unpaid run")
+        KeyValueRow("Late payment penalty", "${formatPeso(rates.latePenalty)} a month after the due date")
         SectionDivider()
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(

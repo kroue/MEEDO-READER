@@ -37,3 +37,16 @@ python tools/verify_migration_8_9.py
 It fills a version-8 database from `8.json`, puts a household in it, runs the
 migration's SQL out of `MeterReaderDatabase.kt`, and compares the result
 against `9.json` — column by column, and checking the household survived.
+## verify_migration_9_10.py
+
+The same check for `MIGRATION_9_10`, which records on each reading the water
+rates it was billed at, now that an admin can change them in the console.
+
+```bash
+python tools/verify_migration_9_10.py
+```
+
+It fills a version-9 database from `9.json`, puts a household and one of their
+readings in it, runs the migration's SQL out of `MeterReaderDatabase.kt`, and
+compares the result against `10.json` — column by column, and checking the
+reading survived with no rates recorded.

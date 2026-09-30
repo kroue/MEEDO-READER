@@ -8,6 +8,7 @@ import com.waterdistrict.meterreader.data.local.dao.ConsumerDao
 import com.waterdistrict.meterreader.data.local.dao.ReadingDao
 import com.waterdistrict.meterreader.data.local.entity.SyncStatus
 import com.waterdistrict.meterreader.data.remote.FirebaseRepository
+import com.waterdistrict.meterreader.data.prefs.RateScheduleStore
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +48,7 @@ class SyncReadingsWorker @AssistedInject constructor(
     private val readingDao: ReadingDao,
     private val consumerDao: ConsumerDao,
     private val firebaseRepository: FirebaseRepository,
+    private val rateScheduleStore: RateScheduleStore,
 ) : CoroutineWorker(context, workerParams) {
 
     companion object {
@@ -111,6 +113,11 @@ class SyncReadingsWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         Log.i(TAG, "Sync worker started. Attempt #${runAttemptCount + 1}")
+
+        // Every sync also refreshes the water rates, so a change an admin sets
+        // ahead reaches the phone before the month it starts. A failure keeps
+        // the copy already here; the uploads below don't depend on it.
+        firebaseRepository.fetchRateSchedule().onSuccess { rateScheduleStore.replace(it) }
 
         // 0. Recover anything a previous run left mid-flight.
         //

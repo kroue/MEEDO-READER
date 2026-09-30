@@ -12,6 +12,7 @@ import com.waterdistrict.meterreader.data.local.entity.SyncStatus
 import com.waterdistrict.meterreader.data.remote.AuthRepository
 import com.waterdistrict.meterreader.data.remote.DownloadedConsumer
 import com.waterdistrict.meterreader.data.remote.FirebaseRepository
+import com.waterdistrict.meterreader.data.prefs.RateScheduleStore
 import com.waterdistrict.meterreader.domain.billing.BillingMonth
 import com.waterdistrict.meterreader.worker.SyncReadingsWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -43,7 +44,8 @@ class SyncViewModel @Inject constructor(
     private val consumerDao: ConsumerDao,
     private val readingDao: ReadingDao,
     private val workManager: WorkManager,
-    private val database: MeterReaderDatabase
+    private val database: MeterReaderDatabase,
+    private val rateScheduleStore: RateScheduleStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SyncUiState())
@@ -128,6 +130,9 @@ class SyncViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true, message = null, success = false)
 
             val result = firebaseRepository.fetchAssignedConcessionaires(barangay, monthStr)
+            // The rates come down with the route, so the month about to be read
+            // is billed at its own rates even with no signal on the route.
+            firebaseRepository.fetchRateSchedule().onSuccess { rateScheduleStore.replace(it) }
 
             result.onSuccess { downloaded ->
                 try {

@@ -5,7 +5,9 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.waterdistrict.meterreader.data.local.entity.ConsumerEntity
 import com.waterdistrict.meterreader.data.local.entity.ReadingEntity
+import com.waterdistrict.meterreader.data.local.entity.billedRates
 import com.waterdistrict.meterreader.domain.billing.BillingMonth
+import com.waterdistrict.meterreader.domain.billing.RateSchedule
 import com.waterdistrict.meterreader.domain.billing.WaterBillingCalculator
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -97,6 +99,18 @@ class FirebaseRepository @Inject constructor() {
                 )
             }
         awaitClose { registration.remove() }
+    }
+
+    /**
+     * The water rate schedule an admin keeps in the console's Settings. A
+     * missing document means rates were never changed there: the base rates.
+     */
+    suspend fun fetchRateSchedule(): Result<RateSchedule> = try {
+        val snapshot = db.collection("settings").document("waterRates").get().await()
+        Result.success(RateSchedule.fromStored(snapshot.get("schedule") as? List<*>))
+    } catch (e: Exception) {
+        Log.w("FirebaseRepository", "Couldn't download the water rates; keeping the copy on this phone", e)
+        Result.failure(e)
     }
 
     suspend fun fetchAssignedConcessionaires(
@@ -196,22 +210,6 @@ class FirebaseRepository @Inject constructor() {
                             .mapNotNull { record -> parseIsoMillis(record["billingDate"] as? String) }
                             .minOrNull()
 
-                    // The ₱10 extension fee is charged once per delinquency, not once per
-                    // bill — derived (not separately tracked) by checking whether any bill
-                    // issued since this debt began already carried the fee.
-                    val feeCandidates = if (summary != null) {
-                        listOfNotNull(summaryLatest, summaryPrevious)
-                    } else {
-                        orderedHistory
-                    }
-                    val extensionFeeAlreadyCharged = delinquentSinceMillis?.let { streakStart ->
-                        feeCandidates.any { record ->
-                            val recordMillis = parseIsoMillis(record["billingDate"] as? String)
-                            val feeCharged = record["extensionFeeCharged"] as? Boolean ?: false
-                            recordMillis != null && recordMillis >= streakStart && feeCharged
-                        }
-                    } ?: false
-
                     val consumerEntity = ConsumerEntity(
                         accountNo = accountNo,
                         name = name,
@@ -226,7 +224,6 @@ class FirebaseRepository @Inject constructor() {
                         overdueBalance = priorBalance,
                         delinquentSinceMillis = delinquentSinceMillis,
                         creditBalance = creditBalance,
-                        extensionFeeAlreadyCharged = extensionFeeAlreadyCharged,
                         alreadyBilledThisMonth = currentMonthRecord != null,
                         billedReadingThisMonth = (currentMonthRecord?.get("reading") as? Number)?.toDouble() ?: 0.0,
                         billedAmountThisMonth = (currentMonthRecord?.get("pesoAmount") as? Number)?.toDouble() ?: 0.0,
@@ -349,21 +346,7 @@ class FirebaseRepository @Inject constructor() {
                 val creditAvailable = storedCredit + creditAppliedBy(existingRecordForMonth)
 
                 val delinquentSince = parseIsoMillis(snapshot.getString("delinquentSince"))
-                @Suppress("UNCHECKED_CAST")
-                val summaryBills = listOfNotNull(
-                    summary?.get("latestBill") as? Map<String, Any>,
-                    summary?.get("previousBill") as? Map<String, Any>
-                )
-                val feeCandidates = summaryBills.ifEmpty { legacyHistory }
-                val extensionFeeAlreadyCharged = delinquentSince?.let { streakStart ->
-                    feeCandidates.any { record ->
-                        if (record["month"] == monthStr) return@any false
-                        val recordMillis = parseIsoMillis(record["billingDate"] as? String)
-                        val feeCharged = record["extensionFeeCharged"] as? Boolean ?: false
-                        recordMillis != null && recordMillis >= streakStart && feeCharged
-                    }
-                } ?: false
-
+                val billedRates = reading.billedRates(consumer.classification)
                 val billing = WaterBillingCalculator.calculate(
                     previousReading = reading.prevReading,
                     currentReading = reading.currentReading,
@@ -372,8 +355,10 @@ class FirebaseRepository @Inject constructor() {
                     delinquentSinceMillis = delinquentSince,
                     creditBalance = creditAvailable,
                     now = reading.readingDate,
-                    extensionFeeAlreadyCharged = extensionFeeAlreadyCharged,
-                    barangay = consumer.routeId
+                    barangay = consumer.routeId,
+                    // The rates the household's bill was printed with, not
+                    // whatever the schedule says today — see billedRates.
+                    config = billedRates
                 )
 
                 // ── OR number ────────────────────────────────────────────────
@@ -408,9 +393,14 @@ class FirebaseRepository @Inject constructor() {
                     // can back these exact charges out again.
                     "minimumCharge" to billing.minimumCharge,
                     "commodityCharge" to billing.commodityCharge,
+                    // Which rates those are, so the office can see what this
+                    // bill charged per m³ after the rate card has changed.
+                    "commodityRate" to billedRates.commodityRate,
+                    "minChargeThreshold" to billedRates.minChargeThreshold,
                     "overdueBalance" to billing.overdueBalance,
                     "overdueSurcharge" to billing.overdueSurcharge,
                     "extensionFee" to billing.extensionFee,
+                    "roundingAdjustment" to billing.roundingAdjustment,
                     "creditApplied" to billing.creditApplied,
                     "meterRolledOver" to billing.meterRolledOver,
                     "dueDateMillis" to billing.dueDateMillis,
@@ -514,6 +504,7 @@ class FirebaseRepository @Inject constructor() {
         val commodity = (record["commodityCharge"] as? Number)?.toDouble()
         val surcharge = (record["overdueSurcharge"] as? Number)?.toDouble() ?: 0.0
         val extension = (record["extensionFee"] as? Number)?.toDouble() ?: 0.0
+        val rounding = (record["roundingAdjustment"] as? Number)?.toDouble() ?: 0.0
         val credit = (record["creditApplied"] as? Number)?.toDouble() ?: 0.0
 
         // Records written before the itemized breakdown existed: fall back to
@@ -523,7 +514,7 @@ class FirebaseRepository @Inject constructor() {
             val carried = (record["overdueBalance"] as? Number)?.toDouble() ?: 0.0
             return max(0.0, peso - carried)
         }
-        return (minimum ?: 0.0) + (commodity ?: 0.0) + surcharge + extension - credit
+        return (minimum ?: 0.0) + (commodity ?: 0.0) + surcharge + extension + rounding - credit
     }
 
     /** Advance credit a billing record consumed, so a correction can hand it back. */

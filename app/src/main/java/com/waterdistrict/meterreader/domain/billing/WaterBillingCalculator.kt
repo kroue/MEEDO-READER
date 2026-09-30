@@ -17,13 +17,22 @@ import kotlin.math.round
 //   COMMERCIAL A                ₱125.00           ₱10.80
 //   COMMERCIAL B                ₱150.00           ₱10.80
 //
-//   Grace period / delinquency policy:
-//     Day 0–15 after the account went delinquent : on time, no surcharge.
-//     Day 16+                                    : 3% surcharge on the overdue
-//                                                   balance, every bill it stays
-//                                                   delinquent, plus a flat ₱10.00
-//                                                   extension fee charged exactly
-//                                                   once per delinquency.
+//   Late payment:
+//     Until the unpaid bill's due date : on time. The due date is the
+//                                        barangay's day, or 15 days after
+//                                        billing where it has none (DueDates).
+//     After it                         : each bill the balance is carried into
+//                                        adds a flat ₱10.00 penalty — ₱10 for
+//                                        every month it stays unpaid. (This
+//                                        replaced a 3% surcharge plus a one-time
+//                                        ₱10 extension fee.)
+//
+//   Whole pesos: the commodity charge is rounded to the nearest peso (half a
+//   peso up), so with whole-peso minimum charges and penalty every line on a
+//   bill, and its total, is a whole peso. Nothing on a bill says it was
+//   rounded. A balance carried in with centavos, from bills issued before
+//   this, is rounded off in the total; that difference is kept, unshown, as
+//   roundingAdjustment so a correction backs the bill out exactly.
 //
 //   "When the account went delinquent" means the moment its balance last went
 //   from zero to owing — tracked as `delinquentSince` on the Firestore
@@ -38,17 +47,29 @@ import kotlin.math.round
 //   surfaces them as staff-facing indicators instead.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** The minimum charges before any change was made in the console. */
+val DEFAULT_MINIMUM_CHARGES: Map<String, Double> = mapOf(
+    "RESIDENTIAL" to 100.00,
+    "GOVERNMENT" to 100.00,
+    "COMMERCIAL A" to 125.00,
+    "COMMERCIAL B" to 150.00,
+)
+
 data class WaterRateConfig(
     /** Cubic metres of consumption covered by the minimum charge. */
     val minChargeThreshold: Double = 10.0,
     /** Flat commodity rate (₱ / m³) charged for consumption beyond [minChargeThreshold]. */
     val commodityRate: Double = 10.80,
-    /** Surcharge rate applied to the overdue balance once past the grace period (3%). */
-    val overdueSurchargeRate: Double = 0.03,
-    /** Days after the account went delinquent before a surcharge applies. */
+    /**
+     * The minimum charge for the first [minChargeThreshold] m³, by
+     * classification. With the two above, this is the part of the rate card
+     * an admin sets in the console (see [RateSchedule]); the rest are fixed.
+     */
+    val minimumCharges: Map<String, Double> = DEFAULT_MINIMUM_CHARGES,
+    /** Days after billing a bill falls due, for a barangay without a set due day. */
     val gracePeriodDays: Int = 15,
-    /** Flat fee for pursuing a delinquent account, applied once it's past the grace period. */
-    val extensionFee: Double = 10.00,
+    /** ₱ added to each bill while an unpaid balance is past its due date. */
+    val latePenalty: Double = 10.00,
     /**
      * Highest reading a meter can show before it rolls back to zero. Mechanical
      * registers on these connections are 5-digit, so 99999 m³ is the wrap point.
@@ -69,16 +90,27 @@ data class BillingResult(
 
     val overdueBalance: Double,     // outstanding balance carried over, if any
     val daysOverdue: Int?,          // days since the account went delinquent, if known
-    val pastGracePeriod: Boolean,   // true once daysOverdue > gracePeriodDays
-    val overdueSurcharge: Double,   // 3% of overdueBalance, every bill it stays past the grace period
-    val extensionFee: Double,       // flat ₱10 delinquency-pursuit fee, charged once per delinquency
+    val pastDue: Boolean,           // the carried balance is unpaid past its due date
+    val overdueSurcharge: Double,   // no longer charged — always 0; older bills may carry one
+    /**
+     * The ₱10 late payment penalty. Named for the one-time extension fee it
+     * replaced, because that is the field older bills and this phone's
+     * database already store it under.
+     */
+    val extensionFee: Double,
 
     /** Advance payment on the account drawn down against this bill. */
     val creditApplied: Double,
     /** Advance payment left over after this bill. */
     val creditRemaining: Double,
 
-    val totalAmountDue: Double,     // what the concessionaire pays now, never negative
+    /**
+     * What rounding the total to a whole peso added or took off — only ever
+     * non-zero when a carried balance or credit has centavos. Stored for the
+     * books, never shown on a bill.
+     */
+    val roundingAdjustment: Double = 0.0,
+    val totalAmountDue: Double,     // what the concessionaire pays now, in whole pesos, never negative
 
     val dueDateMillis: Long,            // the barangay's due day (see DueDates) — pay on/before this to avoid the surcharge
     val projectedOverdueTotal: Double,  // what totalAmountDue becomes if THIS bill isn't paid by dueDateMillis
@@ -92,7 +124,8 @@ data class BillingResult(
      * balance when a reading is corrected, so a correction can never
      * compound the previous attempt's charges.
      */
-    val chargesAdded: Double get() = totalWaterCharge + overdueSurcharge + extensionFee
+    val chargesAdded: Double get() =
+        round((totalWaterCharge + overdueSurcharge + extensionFee + roundingAdjustment) * 100.0) / 100.0
 }
 
 /** Why a reading can't be billed as entered. */
@@ -128,13 +161,11 @@ object WaterBillingCalculator {
      */
     const val IMPLAUSIBLE_CONSUMPTION_M3 = 1_000.0
 
-    /** Flat minimum charge per the rate card, keyed by classification. */
-    fun minimumChargeFor(classification: String): Double =
-        when (classification.trim().uppercase()) {
-            "COMMERCIAL A" -> 125.00
-            "COMMERCIAL B" -> 150.00
-            else           -> 100.00 // RESIDENTIAL / GOVERNMENT
-        }
+    /** Flat minimum charge per the rate card. Unrecognised classifications pay the residential one. */
+    fun minimumChargeFor(classification: String, config: WaterRateConfig = WaterRateConfig()): Double =
+        config.minimumCharges[classification.trim().uppercase()]
+            ?: config.minimumCharges["RESIDENTIAL"]
+            ?: DEFAULT_MINIMUM_CHARGES.getValue("RESIDENTIAL")
 
     /** Rounds to centavos so float noise never reaches Firestore or a receipt. */
     private fun toCentavos(value: Double): Double = round(value * 100.0) / 100.0
@@ -213,48 +244,44 @@ object WaterBillingCalculator {
         delinquentSinceMillis: Long? = null,
         creditBalance: Double = 0.0,
         now: Long = System.currentTimeMillis(),
-        extensionFeeAlreadyCharged: Boolean = false,
         /** The account's barangay, which fixes its due day — see [DueDates]. */
         barangay: String? = null,
         config: WaterRateConfig = WaterRateConfig()
     ): BillingResult {
         val (consumption, meterRolledOver) = consumptionFor(previousReading, currentReading, config)
 
-        val minimumCharge = minimumChargeFor(classification)
-        val commodityCharge = toCentavos(
-            max(0.0, consumption - config.minChargeThreshold) * config.commodityRate
-        )
+        val minimumCharge = minimumChargeFor(classification, config)
+        // Billed in whole pesos like every other line: 7.8 m³ at ₱10.80 is ₱84.
+        val commodityCharge = Math.round(
+            toCentavos(max(0.0, consumption - config.minChargeThreshold) * config.commodityRate)
+        ).toDouble()
         val totalWaterCharge = toCentavos(minimumCharge + commodityCharge)
 
         val carried = max(0.0, overdueBalance)
+        val owingSince = delinquentSinceMillis?.takeIf { carried > 0 }
 
-        val daysOverdue = delinquentSinceMillis
-            ?.takeIf { carried > 0 }
-            ?.let { startedAt -> ((now - startedAt) / 86_400_000L).toInt() }
+        val daysOverdue = owingSince?.let { startedAt -> ((now - startedAt) / 86_400_000L).toInt() }
 
-        val pastGracePeriod = daysOverdue != null && daysOverdue > config.gracePeriodDays
+        // Past due once today is after the due date the unpaid bill was given.
+        val pastDue = owingSince != null &&
+            now > DueDates.dueDateFor(barangay, owingSince, config.gracePeriodDays)
+        val latePenalty = if (pastDue) config.latePenalty else 0.0
 
-        val overdueSurcharge =
-            if (pastGracePeriod) toCentavos(carried * config.overdueSurchargeRate) else 0.0
-        val extensionFee =
-            if (pastGracePeriod && !extensionFeeAlreadyCharged) config.extensionFee else 0.0
+        val grossDue = toCentavos(totalWaterCharge + carried + latePenalty)
 
-        val grossDue = toCentavos(totalWaterCharge + carried + overdueSurcharge + extensionFee)
-
-        // Advance payments on the account settle this bill before any cash does.
+        // Credit left on older accounts settles this bill before any cash does.
         val creditApplied = toCentavos(minOf(max(0.0, creditBalance), grossDue))
         val creditRemaining = toCentavos(max(0.0, creditBalance) - creditApplied)
-        val totalAmountDue = toCentavos(grossDue - creditApplied)
+        val exactDue = toCentavos(grossDue - creditApplied)
 
-        // What the concessionaire would owe if THIS bill goes unpaid past its
-        // own due date — mirrors exactly how the next bill would treat it as the
-        // new overdue balance, so the printed figure matches what actually happens.
+        // Whole pesos already, unless a balance from before carried centavos in.
+        val totalAmountDue = Math.round(exactDue).toDouble()
+        val roundingAdjustment = toCentavos(totalAmountDue - exactDue)
+
+        // Unpaid by its due date, the next bill carries this one plus a
+        // month's penalty — the figure printed as "if paid after".
         val dueDateMillis = DueDates.dueDateFor(barangay, now, config.gracePeriodDays)
-        val extensionFeeUsedForThisDebt = extensionFeeAlreadyCharged || extensionFee > 0
-        val projectedSurcharge = toCentavos(totalAmountDue * config.overdueSurchargeRate)
-        val projectedExtensionFee = if (extensionFeeUsedForThisDebt) 0.0 else config.extensionFee
-        val projectedOverdueTotal =
-            toCentavos(totalAmountDue + projectedSurcharge + projectedExtensionFee)
+        val projectedOverdueTotal = totalAmountDue + config.latePenalty
 
         return BillingResult(
             consumption      = consumption,
@@ -263,11 +290,12 @@ object WaterBillingCalculator {
             totalWaterCharge = totalWaterCharge,
             overdueBalance   = carried,
             daysOverdue      = daysOverdue,
-            pastGracePeriod  = pastGracePeriod,
-            overdueSurcharge = overdueSurcharge,
-            extensionFee     = extensionFee,
+            pastDue          = pastDue,
+            overdueSurcharge = 0.0,
+            extensionFee     = latePenalty,
             creditApplied    = creditApplied,
             creditRemaining  = creditRemaining,
+            roundingAdjustment = roundingAdjustment,
             totalAmountDue   = totalAmountDue,
             dueDateMillis    = dueDateMillis,
             projectedOverdueTotal = projectedOverdueTotal,

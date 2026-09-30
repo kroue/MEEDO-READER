@@ -16,10 +16,19 @@ import java.util.TimeZone
 
 private val symbols = DecimalFormatSymbols(Locale.US)
 private val pesoFormat = DecimalFormat("#,##0.00", symbols)
+private val wholePesoFormat = DecimalFormat("#,##0", symbols)
 private val volumeFormat = DecimalFormat("#,##0.##", symbols)
 
-/** ₱1,234.50 */
-fun formatPeso(amount: Double): String = "₱" + pesoFormat.format(amount)
+/** True when an amount has centavos, once float noise is rounded off. */
+fun hasCentavos(amount: Double): Boolean = Math.round(amount * 100.0) % 100L != 0L
+
+/**
+ * ₱376 for a whole amount — bills are in whole pesos — and ₱10.80 when there
+ * really are centavos, so a rate per m³ or an older balance isn't rounded
+ * away on screen.
+ */
+fun formatPeso(amount: Double): String =
+    "₱" + (if (hasCentavos(amount)) pesoFormat else wholePesoFormat).format(amount)
 
 /** 148.5 m³ */
 fun formatVolume(cubicMetres: Double): String = volumeFormat.format(cubicMetres) + " m³"

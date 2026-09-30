@@ -54,7 +54,7 @@ class SyncStatusConverter {
         ConsumerEntity::class,
         ReadingEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true   // keeps a schema JSON for auditing migrations
 )
 @TypeConverters(SyncStatusConverter::class)
@@ -235,6 +235,18 @@ abstract class MeterReaderDatabase : RoomDatabase() {
             }
         }
 
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_7_8, MIGRATION_8_9)
+        /**
+         * 9 → 10: each reading records the rates it was billed at, now that an
+         * admin can change them. Both columns nullable, so the readings already
+         * on a phone keep going — they were all billed at the base rates.
+         */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE readings ADD COLUMN commodity_rate REAL")
+                db.execSQL("ALTER TABLE readings ADD COLUMN min_charge_threshold REAL")
+            }
+        }
+
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
     }
 }

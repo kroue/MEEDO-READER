@@ -78,12 +78,10 @@ interface ConsumerDao {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * The consumer on this route and cycle whose meter number is exactly
-     * [meterNo] — the only way a reader opens an account.
-     *
-     * Deliberately an exact match (case and surrounding whitespace aside), with
-     * no browsing and no partial search: a reader should be standing at the
-     * meter reading its number, not picking a household from a list of names.
+     * The consumer on this route and cycle whose meter number, or account
+     * number, is exactly [meterNo] (case and surrounding whitespace aside) — so
+     * a reader who types the full number can open the household straight away
+     * rather than picking it from the search results.
      */
     @Query(
         """
@@ -98,6 +96,24 @@ interface ConsumerDao {
         """
     )
     suspend fun findOnRouteByMeter(routeId: String, billingMonth: String, meterNo: String): ConsumerEntity?
+
+    /**
+     * Every household on this route and cycle, with whether it has been read —
+     * what the reader's search filters as they type (see HouseholdSearch).
+     * Read on this device, or already billed on the server by another device,
+     * counts as read, as it does in [countReadOnRoute].
+     */
+    @Query(
+        """
+        SELECT c.*,
+               (c.already_billed_this_month = 1
+                OR c.account_no IN (SELECT account_no FROM readings WHERE billing_month = :billingMonth)) AS isRead
+        FROM   consumers c
+        WHERE  c.route_id = :routeId
+          AND  c.billing_month = :billingMonth
+        """
+    )
+    fun householdsOnRoute(routeId: String, billingMonth: String): Flow<List<RouteHousehold>>
 
     /** How many accounts are on this route this cycle. */
     @Query("SELECT COUNT(*) FROM consumers WHERE route_id = :routeId AND billing_month = :billingMonth")
@@ -130,3 +146,9 @@ interface ConsumerDao {
     @Query("SELECT COUNT(*) FROM consumers WHERE route_id = :routeId")
     suspend fun countByRoute(routeId: String): Int
 }
+
+/** A household on the route, and whether it has been read this cycle. */
+data class RouteHousehold(
+    @Embedded val consumer: ConsumerEntity,
+    @ColumnInfo(name = "isRead") val isRead: Boolean,
+)

@@ -18,6 +18,7 @@ import com.waterdistrict.meterreader.ui.auth.LoginContent
 import com.waterdistrict.meterreader.ui.auth.LoginUiState
 import com.waterdistrict.meterreader.ui.bill.DigitalBillContent
 import com.waterdistrict.meterreader.ui.bill.DigitalBillUiState
+import com.waterdistrict.meterreader.ui.consumers.HouseholdMatch
 import com.waterdistrict.meterreader.ui.consumers.MeterEntryContent
 import com.waterdistrict.meterreader.ui.consumers.MeterEntryUiState
 import com.waterdistrict.meterreader.ui.reading.ExistingBillInfo
@@ -74,7 +75,7 @@ class DesignSnapshots {
         name = "Maria Santos Dela Cruz",
         address = "Purok 3, BO-OT",
         meterNo = "048213",
-        prevReading = 1_234.5,
+        prevReading = 1_234.2,
         routeId = "BO-OT",
         classification = "RESIDENTIAL",
         overdueBalance = 180.0,
@@ -179,6 +180,25 @@ class DesignSnapshots {
                 readOnRoute = 57,
                 pendingUploads = 2,
                 lastSavedAccount = "048213",
+            )
+        )
+    }
+
+    @Test
+    fun meterEntrySearch() = snap("15-meter-entry-search") {
+        MeterEntryContent(
+            MeterEntryUiState(
+                barangay = "BO-OT",
+                billingMonth = "SEP 2026",
+                meterInput = "dela cruz",
+                matches = listOf(
+                    HouseholdMatch("048207", "Juan Dela Cruz", "048207", "2026-000017", "Purok 1, BO-OT", isRead = true),
+                    HouseholdMatch("048213", "Maria Santos Dela Cruz", "048213", "2026-000042", "Purok 3, BO-OT", isRead = false),
+                    HouseholdMatch("048290", "Rosario Dela Cruz", "048290", "048290", "Purok 5, BO-OT", isRead = false),
+                ),
+                totalOnRoute = 142,
+                readOnRoute = 57,
+                pendingUploads = 2,
             )
         )
     }

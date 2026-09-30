@@ -1,6 +1,7 @@
 package com.waterdistrict.meterreader.ui.consumers
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,7 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -32,20 +33,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.waterdistrict.meterreader.ui.components.AppTopBar
 import com.waterdistrict.meterreader.ui.components.BottomActionBar
 import com.waterdistrict.meterreader.ui.components.EmptyState
+import com.waterdistrict.meterreader.ui.components.ListRow
 import com.waterdistrict.meterreader.ui.components.PrimaryButton
 import com.waterdistrict.meterreader.ui.components.SectionCard
+import com.waterdistrict.meterreader.ui.components.SectionDivider
 import com.waterdistrict.meterreader.ui.components.StatusBanner
 import com.waterdistrict.meterreader.ui.components.StatusPill
 import com.waterdistrict.meterreader.ui.components.Tone
@@ -76,6 +77,7 @@ fun MeterEntryScreen(
         onBack = onBack,
         onMeterInputChanged = viewModel::onMeterInputChanged,
         onOpen = viewModel::open,
+        onOpenHousehold = viewModel::openHousehold,
     )
 }
 
@@ -85,6 +87,7 @@ fun MeterEntryContent(
     onBack: () -> Unit = {},
     onMeterInputChanged: (String) -> Unit = {},
     onOpen: () -> Unit = {},
+    onOpenHousehold: (String) -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
     val hasRoute = state.totalOnRoute > 0
@@ -147,9 +150,9 @@ fun MeterEntryContent(
             }
 
             Column {
-                Text("Meter number", style = MaterialTheme.typography.titleMedium)
+                Text("Find the household", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Type the number printed on the meter in front of you.",
+                    "Search by name, account number or meter number.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -159,8 +162,8 @@ fun MeterEntryContent(
                     onValueChange = onMeterInputChanged,
                     placeholder = {
                         Text(
-                            "Meter number",
-                            style = MaterialTheme.typography.headlineSmall,
+                            "Name, account or meter no.",
+                            style = MaterialTheme.typography.titleLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
                     },
@@ -168,17 +171,13 @@ fun MeterEntryContent(
                     isError = state.error != null,
                     supportingText = state.error?.let { message -> { Text(message) } },
                     leadingIcon = {
-                        Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.padding(start = 4.dp))
+                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.padding(start = 4.dp))
                     },
-                    textStyle = MaterialTheme.typography.headlineSmall.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 1.5.sp
-                    ),
+                    textStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                     keyboardOptions = KeyboardOptions(
-                        capitalization = KeyboardCapitalization.Characters,
+                        capitalization = KeyboardCapitalization.Words,
                         autoCorrect = false,
-                        keyboardType = KeyboardType.Ascii,
+                        keyboardType = KeyboardType.Text,
                         imeAction = ImeAction.Go
                     ),
                     keyboardActions = KeyboardActions(onGo = { onOpen() }),
@@ -187,6 +186,10 @@ fun MeterEntryContent(
                         .fillMaxWidth()
                         .focusRequester(focusRequester)
                 )
+            }
+
+            if (state.matches.isNotEmpty()) {
+                SearchResults(state, onOpenHousehold)
             }
         }
     }
@@ -235,5 +238,38 @@ private fun RouteProgress(state: MeterEntryUiState) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+/** The households matching the search — tap one to open it. */
+@Composable
+private fun SearchResults(state: MeterEntryUiState, onOpenHousehold: (String) -> Unit) {
+    SectionCard(contentPadding = PaddingValues(vertical = 4.dp)) {
+        state.matches.forEachIndexed { index, household ->
+            if (index > 0) SectionDivider()
+            ListRow(
+                title = household.name,
+                detail = listOfNotNull(
+                    "Meter ${household.meterNo}",
+                    household.displayAccountNo.takeIf { it != household.meterNo }?.let { "Acct $it" },
+                    household.address.takeIf { it.isNotBlank() },
+                ).joinToString(" · "),
+                onClick = { onOpenHousehold(household.accountNo) },
+                trailing = if (household.isRead) {
+                    { StatusPill(text = "Read", tone = Tone.Success) }
+                } else {
+                    null
+                },
+                modifier = Modifier.padding(horizontal = 8.dp),
+            )
+        }
+        if (state.moreMatches > 0) {
+            Text(
+                "…and ${state.moreMatches} more. Keep typing to narrow it down.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+            )
+        }
     }
 }

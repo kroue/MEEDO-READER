@@ -1,5 +1,6 @@
 package com.waterdistrict.meterreader.hardware.bluetooth
 
+import com.waterdistrict.meterreader.OfficeInfo
 import com.waterdistrict.meterreader.data.local.entity.ConsumerEntity
 import com.waterdistrict.meterreader.data.local.entity.displayAccountNo
 import com.waterdistrict.meterreader.domain.billing.BillingResult
@@ -32,11 +33,15 @@ object WaterBillReceiptBuilder {
         minimumFractionDigits = 2
         maximumFractionDigits = 2
     }
+    private val wholePesoFormat = NumberFormat.getNumberInstance().apply {
+        maximumFractionDigits = 0
+    }
 
     private val dueDateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
 
-    /** Format a Double as ₱1,234.56 */
-    private fun Double.toPeso(): String = "P${pesoFormat.format(this)}"
+    /** P376 for a whole amount, P1,234.56 when there are centavos. */
+    private fun Double.toPeso(): String =
+        "P" + (if (Math.round(this * 100.0) % 100L != 0L) pesoFormat else wholePesoFormat).format(this)
 
     /**
      * Build the complete receipt byte array.
@@ -49,18 +54,21 @@ object WaterBillReceiptBuilder {
      * @param currentReading The current meter reading (m3)
      * @param readingDate    Timestamp of the reading (default = now)
      * @param readByName     Name of the field worker (for accountability)
+     * @param minChargeThreshold The m³ the minimum charge covered under the rates this bill
+     *                       was worked out with — an admin can change it in the console.
      * @param orNumber       Official Receipt number — assigned server-side on upload, so a
      *                       receipt printed before that completes shows "PENDING SYNC" instead.
      */
     fun build(
-        district: String         = "SOUTH WAO WATER SYSTEM (MEEDO)",
-        districtAddr: String     = "Wao, Lanao del Sur",
-        districtTel: String      = "Tel: 0985 762 5456",
+        district: String         = OfficeInfo.NAME.uppercase(),
+        districtAddr: String     = OfficeInfo.ADDRESS,
+        districtTel: String      = "Tel: ${OfficeInfo.TELEPHONE}",
         consumer: ConsumerEntity,
         billing: BillingResult,
         currentReading: Double,
         readingDate: Long        = System.currentTimeMillis(),
         readByName: String       = "Field Reader",
+        minChargeThreshold: Double = 10.0,
         orNumber: String         = ""
     ): ByteArray {
 
@@ -80,7 +88,11 @@ object WaterBillReceiptBuilder {
             .textLine(district)
             .boldOff()
             .fontNormal()
-            .textLine(districtAddr)
+            // Broken at its commas — left to the printer, a 51-character
+            // address is cut mid-word at the edge of the paper.
+            .also { receipt ->
+                OfficeInfo.addressLines(LINE_WIDTH, districtAddr).forEach { receipt.textLine(it) }
+            }
             .textLine(districtTel)
             .feed()
 
@@ -126,12 +138,20 @@ object WaterBillReceiptBuilder {
             // Every line is printed regardless of value \u2014 an official receipt
             // is a complete, auditable statement, not one that hides
             // categories that happen to be \u20B10.00 this cycle.
-            .leftRightText("Min Charge (0-10m3):", billing.minimumCharge.toPeso(),   LINE_WIDTH)
+            .leftRightText("Min Charge (0-${minChargeThreshold.toInt()}m3):", billing.minimumCharge.toPeso(), LINE_WIDTH)
             .leftRightText("Commodity Charge:", billing.commodityCharge.toPeso(), LINE_WIDTH)
             .leftRightText("Water Charge:",   billing.totalWaterCharge.toPeso(), LINE_WIDTH)
             .leftRightText("Previous Balance:", billing.overdueBalance.toPeso(), LINE_WIDTH)
-            .leftRightText("Overdue Surcharge:", billing.overdueSurcharge.toPeso(), LINE_WIDTH)
-            .leftRightText("Extension Fee:", billing.extensionFee.toPeso(), LINE_WIDTH)
+            // The 3% surcharge is no longer charged; a reprint of an older bill
+            // that carried one still shows it.
+            .let { b ->
+                if (billing.overdueSurcharge > 0) {
+                    b.leftRightText("Overdue Surcharge:", billing.overdueSurcharge.toPeso(), LINE_WIDTH)
+                } else {
+                    b
+                }
+            }
+            .leftRightText("Late Penalty:", billing.extensionFee.toPeso(), LINE_WIDTH)
             .let { b ->
                 // Only printed when there is one — a "Less: Advance Payment
                 // 0.00" line on every receipt just invites questions.

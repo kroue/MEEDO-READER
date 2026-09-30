@@ -262,7 +262,7 @@ fun ReadingEntryContent(
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
-                state.billing?.let { BillCard(it) }
+                state.billing?.let { BillCard(it, state.rates) }
             }
 
             PrinterCard(
@@ -445,8 +445,7 @@ private fun ReadingCard(
 // ── Bill ─────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun BillCard(billing: BillingResult) {
-    val rates = WaterRateConfig()
+private fun BillCard(billing: BillingResult, rates: WaterRateConfig) {
     SectionCard(contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
         // What matters most, first: how much, and by when.
         Column(
@@ -491,11 +490,7 @@ private fun BillCard(billing: BillingResult) {
                 else "Previous balance",
                 formatPeso(billing.overdueBalance)
             )
-            KeyValueRow(
-                "Late surcharge (${(rates.overdueSurchargeRate * 100).toInt()}%)",
-                formatPeso(billing.overdueSurcharge)
-            )
-            KeyValueRow("Extension fee", formatPeso(billing.extensionFee))
+            KeyValueRow("Late payment penalty", formatPeso(billing.extensionFee))
             if (billing.creditApplied > 0) {
                 KeyValueRow(
                     "Less: advance payment",

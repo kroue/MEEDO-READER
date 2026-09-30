@@ -1,5 +1,6 @@
 package com.waterdistrict.meterreader.ui.about
 
+import com.waterdistrict.meterreader.OfficeInfo
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -67,8 +68,8 @@ private val DEVELOPERS = listOf(
 private const val COMPANY_NAME = "Sysware"
 private const val COMPANY_FULL_NAME = "Sysware Computer Sales & Services"
 
-private const val SYSTEM_NAME = "South Wao Water System (MEEDO)"
-private const val SYSTEM_ADDRESS = "Wao, Lanao del Sur"
+private const val SYSTEM_NAME = OfficeInfo.NAME
+private val SYSTEM_ADDRESS = OfficeInfo.addressForDisplay
 private const val COPYRIGHT_YEAR = "2026"
 
 /** Third-party components this app ships, and the licence each is used under. */
@@ -174,7 +175,7 @@ fun AboutScreen(onBack: () -> Unit = {}) {
                         "answerable for it, and you answerable for what you do with it."
                 )
                 Spacer(Modifier.height(6.dp))
-                Bullet("Open only the household you are standing at. The app asks for a meter number rather than showing a list for exactly this reason.")
+                Bullet("Open only the household you are standing at. Search for it by name, account or meter number — the route isn't listed until you do, so don't browse other households' details.")
                 Bullet("Do not photograph the screen, copy records, or send anyone's details through a personal message.")
                 Bullet("Hand a receipt to the household it belongs to, nobody else.")
                 Bullet("If this phone is lost or stolen, tell the office the same day. A breach that could harm people must be reported to the National Privacy Commission within 72 hours of the office learning of it.")

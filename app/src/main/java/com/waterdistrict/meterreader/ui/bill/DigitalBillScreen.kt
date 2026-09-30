@@ -1,5 +1,6 @@
 package com.waterdistrict.meterreader.ui.bill
 
+import com.waterdistrict.meterreader.OfficeInfo
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,7 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.waterdistrict.meterreader.data.local.entity.ConsumerEntity
 import com.waterdistrict.meterreader.data.local.entity.displayAccountNo
 import com.waterdistrict.meterreader.data.local.entity.ReadingEntity
-import com.waterdistrict.meterreader.domain.billing.WaterRateConfig
+import com.waterdistrict.meterreader.data.local.entity.billedRates
 import com.waterdistrict.meterreader.hardware.bluetooth.PrinterState
 import com.waterdistrict.meterreader.hardware.bluetooth.rememberBluetoothConnectAction
 import com.waterdistrict.meterreader.ui.components.AppTopBar
@@ -129,7 +130,8 @@ fun DigitalBillContent(
 
 @Composable
 private fun BillDocument(consumer: ConsumerEntity, reading: ReadingEntity) {
-    val rates = WaterRateConfig()
+    // What this bill was worked out with — it may predate a rate change.
+    val rates = reading.billedRates(consumer.classification)
     SectionCard(contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
         Column(
             modifier = Modifier
@@ -139,9 +141,23 @@ private fun BillDocument(consumer: ConsumerEntity, reading: ReadingEntity) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                "SOUTH WAO WATER SYSTEM (MEEDO)",
+                OfficeInfo.NAME.uppercase(),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onPrimary,
+                textAlign = TextAlign.Center
+            )
+            // The same office details the printed bill carries, so a household
+            // shown the bill on screen knows where to pay.
+            Text(
+                OfficeInfo.addressForDisplay,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                textAlign = TextAlign.Center
+            )
+            Text(
+                "Tel: ${OfficeInfo.TELEPHONE}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
                 textAlign = TextAlign.Center
             )
             Text(
@@ -221,11 +237,12 @@ private fun BillDocument(consumer: ConsumerEntity, reading: ReadingEntity) {
                 emphasize = true
             )
             KeyValueRow("Previous balance", formatPeso(reading.overdueBalance))
-            KeyValueRow(
-                "Late surcharge (${(rates.overdueSurchargeRate * 100).toInt()}%)",
-                formatPeso(reading.overdueSurcharge)
-            )
-            KeyValueRow("Extension fee", formatPeso(reading.extensionFee))
+            // The 3% surcharge is no longer charged; an older bill that carried
+            // one still shows it.
+            if (reading.overdueSurcharge > 0) {
+                KeyValueRow("Late surcharge (3%)", formatPeso(reading.overdueSurcharge))
+            }
+            KeyValueRow("Late payment penalty", formatPeso(reading.extensionFee))
             if (reading.creditApplied > 0) {
                 KeyValueRow(
                     "Less: advance payment",

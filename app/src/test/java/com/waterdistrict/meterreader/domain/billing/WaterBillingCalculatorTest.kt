@@ -12,8 +12,9 @@ import org.junit.Test
  * These are the numbers a concessionaire actually pays, so the cases below
  * are written as the scenarios the office would recognise rather than as
  * exhaustive branch coverage. Several of them exist because the behaviour was
- * wrong in production: the meter rollover, the delinquency clock, and the
- * one-time extension fee each caused a real billing error.
+ * wrong in production: the meter rollover and the delinquency clock each
+ * caused a real billing error. Mirrors lib/billingCalculator.test.ts in the
+ * console case for case — a bill from either side must come out the same.
  */
 class WaterBillingCalculatorTest {
 
@@ -27,7 +28,8 @@ class WaterBillingCalculatorTest {
         overdue: Double = 0.0,
         delinquentSince: Long? = null,
         credit: Double = 0.0,
-        feeAlreadyCharged: Boolean = false,
+        barangay: String? = null,
+        config: WaterRateConfig = WaterRateConfig(),
     ) = WaterBillingCalculator.calculate(
         previousReading = previous,
         currentReading = current,
@@ -36,7 +38,8 @@ class WaterBillingCalculatorTest {
         delinquentSinceMillis = delinquentSince,
         creditBalance = credit,
         now = now,
-        extensionFeeAlreadyCharged = feeAlreadyCharged,
+        barangay = barangay,
+        config = config,
     )
 
     // ── Rate card ────────────────────────────────────────────────────────────
@@ -73,46 +76,55 @@ class WaterBillingCalculatorTest {
         assertEquals(100.0, WaterBillingCalculator.minimumChargeFor(""), 0.001)
     }
 
-    // ── Grace period, surcharge, extension fee ───────────────────────────────
+    // ── Late payment penalty ─────────────────────────────────────────────────
 
     @Test
-    fun `no surcharge inside the fifteen day grace period`() {
+    fun `nothing extra before the unpaid bill's due date`() {
+        // No set due day, so the bill fell due fifteen days after billing.
         val result = bill(overdue = 500.0, delinquentSince = now - 15 * day)
-        assertFalse(result.pastGracePeriod)
-        assertEquals(0.0, result.overdueSurcharge, 0.001)
+        assertFalse(result.pastDue)
         assertEquals(0.0, result.extensionFee, 0.001)
+        assertEquals(0.0, result.overdueSurcharge, 0.001)
         assertEquals(600.0, result.totalAmountDue, 0.001)
     }
 
     @Test
-    fun `surcharge and extension fee apply from day sixteen`() {
+    fun `ten pesos once the carried balance is past its due date, and no 3 percent`() {
         val result = bill(overdue = 500.0, delinquentSince = now - 16 * day)
-        assertTrue(result.pastGracePeriod)
-        assertEquals(15.0, result.overdueSurcharge, 0.001)   // 3% of 500
+        assertTrue(result.pastDue)
         assertEquals(10.0, result.extensionFee, 0.001)
-        assertEquals(625.0, result.totalAmountDue, 0.001)
+        assertEquals(0.0, result.overdueSurcharge, 0.001)
+        assertEquals(610.0, result.totalAmountDue, 0.001)
     }
 
     @Test
-    fun `extension fee is charged once per delinquency, not once per bill`() {
-        val result = bill(
-            overdue = 500.0,
-            delinquentSince = now - 60 * day,
-            feeAlreadyCharged = true,
-        )
-        assertEquals(0.0, result.extensionFee, 0.001)
-        // Surcharge still applies every cycle the debt stays overdue.
-        assertEquals(15.0, result.overdueSurcharge, 0.001)
+    fun `ten pesos on every month's bill it stays unpaid, not just once`() {
+        // Two months on, this bill still carries its own ₱10; last month's ₱10
+        // is already inside the carried balance.
+        val result = bill(overdue = 610.0, delinquentSince = now - 60 * day)
+        assertEquals(10.0, result.extensionFee, 0.001)
+        assertEquals(720.0, result.totalAmountDue, 0.001)
     }
 
     @Test
-    fun `no surcharge when the delinquency start date is unknown`() {
+    fun `counts from the barangay's own due day`() {
+        // "now" is 4 September 2025 in the Philippines. Billed 5 August, a
+        // Bo-ot bill fell due on the 17th — past due. Billed 25 August, it falls
+        // due on 17 September — not yet.
+        val augustFifth = 1_754_359_200_000L        // 5 Aug 2025, 02:00 UTC
+        val augustTwentyFifth = 1_756_087_200_000L  // 25 Aug 2025, 02:00 UTC
+        assertEquals(10.0, bill(barangay = "BO-OT", overdue = 500.0, delinquentSince = augustFifth).extensionFee, 0.001)
+        assertEquals(0.0, bill(barangay = "BO-OT", overdue = 500.0, delinquentSince = augustTwentyFifth).extensionFee, 0.001)
+    }
+
+    @Test
+    fun `no penalty when the delinquency start date is unknown`() {
         // Legacy documents with a balance but no delinquentSince: we can't tell
         // how long it has been owed, so we don't invent a penalty.
         val result = bill(overdue = 500.0, delinquentSince = null)
         assertNull(result.daysOverdue)
-        assertFalse(result.pastGracePeriod)
-        assertEquals(0.0, result.overdueSurcharge, 0.001)
+        assertFalse(result.pastDue)
+        assertEquals(0.0, result.extensionFee, 0.001)
         assertEquals(600.0, result.totalAmountDue, 0.001)
     }
 
@@ -123,15 +135,52 @@ class WaterBillingCalculatorTest {
         // 20-day disconnection threshold.
         val result = bill(overdue = 2_400.0, delinquentSince = now - 400 * day)
         assertEquals(400, result.daysOverdue)
-        assertTrue(result.pastGracePeriod)
+        assertTrue(result.pastDue)
     }
 
     @Test
-    fun `no surcharge when nothing is owed even if a delinquency date lingers`() {
+    fun `no penalty when nothing is owed even if a delinquency date lingers`() {
         val result = bill(overdue = 0.0, delinquentSince = now - 90 * day)
         assertNull(result.daysOverdue)
-        assertEquals(0.0, result.overdueSurcharge, 0.001)
         assertEquals(0.0, result.extensionFee, 0.001)
+    }
+
+    // ── Whole pesos ──────────────────────────────────────────────────────────
+
+    @Test
+    fun `the water is billed in whole pesos`() {
+        // 3 m³ at ₱10.80 is ₱32.40, billed as ₱32.
+        val result = bill(previous = 0.0, current = 13.0)
+        assertEquals(32.0, result.commodityCharge, 0.0)
+        assertEquals(132.0, result.totalWaterCharge, 0.0)
+        assertEquals(132.0, result.totalAmountDue, 0.0)
+        assertEquals(0.0, result.roundingAdjustment, 0.0)
+    }
+
+    @Test
+    fun `half a peso rounds up`() {
+        val result = bill(previous = 0.0, current = 11.0, config = WaterRateConfig(commodityRate = 10.5))
+        assertEquals(11.0, result.commodityCharge, 0.0)
+        assertEquals(111.0, result.totalAmountDue, 0.0)
+    }
+
+    @Test
+    fun `every line is a whole peso, adding up to the amount due`() {
+        // 7.3 m³ at ₱10.80 is ₱78.84, billed as ₱79.
+        val result = bill(previous = 100.0, current = 117.3, overdue = 431.0, delinquentSince = now - 40 * day)
+        assertEquals(
+            listOf(100.0, 79.0, 431.0, 10.0),
+            listOf(result.minimumCharge, result.commodityCharge, result.overdueBalance, result.extensionFee)
+        )
+        assertEquals(620.0, result.totalAmountDue, 0.0)
+        assertEquals(0.0, result.roundingAdjustment, 0.0)
+    }
+
+    @Test
+    fun `centavos a balance from before carries in are rounded off`() {
+        val result = bill(overdue = 50.4)
+        assertEquals(150.0, result.totalAmountDue, 0.0)
+        assertEquals(-0.4, result.roundingAdjustment, 0.0001)
     }
 
     // ── Advance credit ───────────────────────────────────────────────────────
@@ -187,17 +236,15 @@ class WaterBillingCalculatorTest {
     @Test
     fun `projected total matches what the next bill would actually carry forward`() {
         val result = bill(previous = 100.0, current = 110.0)
-        // 100 now; unpaid past the due date it becomes 100 + 3% + ₱10.
-        assertEquals(113.0, result.projectedOverdueTotal, 0.001)
+        // ₱100 now; unpaid past the due date the next bill adds a month's ₱10.
+        assertEquals(110.0, result.projectedOverdueTotal, 0.001)
         assertEquals(now + 15 * day, result.dueDateMillis)
     }
 
     @Test
-    fun `projection does not charge the extension fee twice`() {
+    fun `projection adds one more month's penalty to a bill already carrying one`() {
         val result = bill(overdue = 500.0, delinquentSince = now - 16 * day)
-        // The fee was already applied on this bill, so the projection adds only
-        // the surcharge.
-        assertEquals(625.0 * 1.03, result.projectedOverdueTotal, 0.01)
+        assertEquals(620.0, result.projectedOverdueTotal, 0.001)
     }
 
     // ── Correction safety ────────────────────────────────────────────────────
@@ -209,14 +256,13 @@ class WaterBillingCalculatorTest {
         // a reading would wipe the concessionaire's existing debt.
         val result = bill(previous = 100.0, current = 125.0, overdue = 500.0,
                           delinquentSince = now - 16 * day)
-        assertEquals(262.0 + 15.0 + 10.0, result.chargesAdded, 0.001)
+        assertEquals(262.0 + 10.0, result.chargesAdded, 0.001)
     }
 
     @Test
-    fun `money values are rounded to centavos`() {
-        // 13 m³ → 3 m³ above the allowance × 10.80 = 32.4, no float dust.
-        val result = bill(previous = 0.0, current = 13.0)
-        assertEquals(32.4, result.commodityCharge, 0.0001)
-        assertEquals(132.4, result.totalAmountDue, 0.0001)
+    fun `chargesAdded includes the rounding, so a correction backs it out exactly`() {
+        val result = bill(overdue = 50.4)
+        assertEquals(150.0, result.totalAmountDue, 0.0) // 100 + 50.40, rounded
+        assertEquals(50.4, result.totalAmountDue - result.chargesAdded, 0.001)
     }
 }

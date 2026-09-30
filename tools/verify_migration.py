@@ -50,7 +50,9 @@ SEP_2026 = 1_789_401_600_000   # 15 Sep 2026
 def extract_migration_sql(source: str):
     """Pulls every execSQL(...) argument out of the MIGRATION_7_8 block, in order."""
     start = source.index('val MIGRATION_7_8')
-    end = source.index('val MIGRATIONS', start)
+    # Up to the next migration (or the list of them) — not just the list,
+    # which a later migration would put its own SQL in front of.
+    end = source.index('val MIGRATION', start + 1)
     block = source[start:end]
 
     statements = []

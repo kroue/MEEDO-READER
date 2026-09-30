@@ -7,6 +7,8 @@ import com.waterdistrict.meterreader.data.local.dao.ConsumerDao
 import com.waterdistrict.meterreader.data.local.dao.ReadingDao
 import com.waterdistrict.meterreader.data.local.entity.ConsumerEntity
 import com.waterdistrict.meterreader.data.local.entity.ReadingEntity
+import com.waterdistrict.meterreader.data.local.entity.billedRates
+import com.waterdistrict.meterreader.data.local.entity.roundingAdjustment
 import com.waterdistrict.meterreader.domain.billing.BillingResult
 import com.waterdistrict.meterreader.hardware.bluetooth.BluetoothPrinterManager
 import com.waterdistrict.meterreader.hardware.bluetooth.PrinterState
@@ -76,6 +78,7 @@ class DigitalBillViewModel @Inject constructor(
                     readingDate = reading.readingDate,
                     readByName = reading.readByUserId,
                     orNumber = reading.orNumber,
+                    minChargeThreshold = reading.billedRates(consumer.classification).minChargeThreshold,
                 ).let { bytes -> raw(bytes) }
             }
         }
@@ -89,13 +92,14 @@ class DigitalBillViewModel @Inject constructor(
         totalWaterCharge = minimumCharge + commodityCharge,
         overdueBalance = overdueBalance,
         daysOverdue = null,
-        pastGracePeriod = overdueSurcharge > 0 || extensionFee > 0,
+        pastDue = overdueSurcharge > 0 || extensionFee > 0,
         overdueSurcharge = overdueSurcharge,
         extensionFee = extensionFee,
         creditApplied = creditApplied,
         // Not stored per reading — a reprint shows what this bill consumed,
         // not what happens to be left on the account today.
         creditRemaining = 0.0,
+        roundingAdjustment = roundingAdjustment,
         totalAmountDue = totalAmountDue,
         dueDateMillis = dueDateMillis,
         projectedOverdueTotal = projectedOverdueTotal,

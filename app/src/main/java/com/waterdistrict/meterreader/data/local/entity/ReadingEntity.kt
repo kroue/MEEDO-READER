@@ -1,6 +1,9 @@
 package com.waterdistrict.meterreader.data.local.entity
 
 import androidx.room.ColumnInfo
+import com.waterdistrict.meterreader.domain.billing.DEFAULT_MINIMUM_CHARGES
+import com.waterdistrict.meterreader.domain.billing.RateCard
+import com.waterdistrict.meterreader.domain.billing.WaterRateConfig
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -144,5 +147,50 @@ data class ReadingEntity(
     val readByUserId: String,
 
     @ColumnInfo(name = "remarks")
-    val remarks: String = ""
+    val remarks: String = "",
+
+    /**
+     * The rates this reading was billed at: ₱ per m³, and the m³ the minimum
+     * charge covers. Taken from the rate schedule the phone last synced, when
+     * the reading is saved, and reused when it uploads — so the office's
+     * record matches the bill the household was handed, even if the admin
+     * changed the rates in between. Null on readings from before rates could
+     * change, which were all billed at the base rates.
+     */
+    @ColumnInfo(name = "commodity_rate")
+    val commodityRate: Double? = null,
+
+    @ColumnInfo(name = "min_charge_threshold")
+    val minChargeThreshold: Double? = null
 )
+
+/**
+ * The rates this reading was billed at, rebuilt from what it recorded — so
+ * the upload works the bill out exactly as the phone printed it. A reading
+ * from before rates could change recorded none, and was billed at the base
+ * rates.
+ */
+fun ReadingEntity.billedRates(classification: String): WaterRateConfig {
+    val rate = commodityRate
+    val threshold = minChargeThreshold
+    if (rate == null || threshold == null) return RateCard.BASE.toConfig()
+    return WaterRateConfig(
+        minChargeThreshold = threshold,
+        commodityRate = rate,
+        // The minimum charge this reading was given is the one its
+        // classification had under those rates.
+        minimumCharges = DEFAULT_MINIMUM_CHARGES + (classification.trim().uppercase() to minimumCharge),
+    )
+}
+
+/**
+ * What rounding this bill to a whole peso added or took off — whatever the
+ * total differs from its itemised lines by. Worked out rather than stored:
+ * it is exactly that difference, and a reading from before bills were rounded
+ * comes out at zero.
+ */
+val ReadingEntity.roundingAdjustment: Double
+    get() {
+        val lines = minimumCharge + commodityCharge + overdueBalance + overdueSurcharge + extensionFee - creditApplied
+        return Math.round((totalAmountDue - lines) * 100.0) / 100.0
+    }
